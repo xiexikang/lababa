@@ -1,0 +1,19 @@
+{
+  "users": [],
+  "records": [
+    {
+      "id": "66333115c0034e79301f0a079a88b33d",
+      "userId": "default-user",
+      "startTime": 1763206527017,
+      "endTime": 1763206827017,
+      "duration": 300,
+      "color": "brown",
+      "status": "normal",
+      "shape": "banana",
+      "amount": "moderate",
+      "note": "Go????",
+      "isCompleted": true,
+      "createdAt": 1763206827017
+    }
+  ]
+}

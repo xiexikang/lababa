@@ -1,0 +1,33 @@
+{
+  "users": [],
+  "records": [
+    {
+      "id": "EEKM0ZVNaLHzLaFVHkVu4",
+      "userId": "default-user",
+      "startTime": 1763206145732,
+      "endTime": 1763206445732,
+      "duration": 300,
+      "color": "brown",
+      "status": "normal",
+      "shape": "banana",
+      "amount": "moderate",
+      "note": "??????",
+      "isCompleted": true,
+      "createdAt": 1763206445732
+    },
+    {
+      "id": "3u74uK03GOnkv9KLgsXX4",
+      "userId": "default-user",
+      "startTime": 1763205673617,
+      "endTime": 1763205973617,
+      "duration": 300,
+      "color": "brown",
+      "status": "normal",
+      "shape": "banana",
+      "amount": "moderate",
+      "note": "????",
+      "isCompleted": true,
+      "createdAt": 1763205973617
+    }
+  ]
+}
