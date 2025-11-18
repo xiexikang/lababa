@@ -66,6 +66,36 @@
       </view>
     </view>
 
+    <!-- 我的猫咪管理 -->
+    <view class="cats-section">
+      <view class="section-header">
+        <text class="section-title">🐱 我的猫咪</text>
+        <template v-if="env==='WEAPP'">
+          <button class="nut-button" @tap="goCreateCat">新增</button>
+        </template>
+        <template v-else>
+          <nut-button type="primary" @click="goCreateCat">新增</nut-button>
+        </template>
+      </view>
+      <view v-if="loadingCats" class="cat-item"><text>加载中...</text></view>
+      <view v-else-if="!cats.length" class="cat-item"><text>暂无猫咪，点击新增创建</text></view>
+      <view v-else>
+        <view v-for="c in cats" :key="c.id" class="cat-item">
+          <text class="cat-name">{{ c.name || '未命名' }}</text>
+          <view class="cat-actions">
+            <template v-if="env==='WEAPP'">
+              <button class="nut-button" @tap="() => goEditCat(String(c.id))">编辑</button>
+              <button class="nut-button" @tap="() => removeCat(String(c.id))">删除</button>
+            </template>
+            <template v-else>
+              <nut-button type="primary" @click="() => goEditCat(String(c.id))">编辑</nut-button>
+              <nut-button type="danger" @click="() => removeCat(String(c.id))">删除</nut-button>
+            </template>
+          </view>
+        </view>
+      </view>
+    </view>
+
     <!-- 底部导航栏 -->
   </view>
 </template>
@@ -75,7 +105,7 @@ import { reactive, computed, ref, onMounted } from 'vue';
 import Taro from '@tarojs/taro';
 import { useSimpleStore } from '@/store/simple';
 import { showToast } from '@/utils/toast';
-import { post, postRaw } from '@/utils/request'
+import { post, postRaw, get, del } from '@/utils/request'
 
 // 使用简单的状态管理
 const store = useSimpleStore();
@@ -97,7 +127,7 @@ const totalMinutes = computed(() => {
   const totalSeconds = store.globalState.records.reduce((sum, r) => sum + (r?.duration || 0), 0);
   return Math.floor(totalSeconds / 60);
 });
-  const friendsCount = ref(0);
+const friendsCount = ref(0);
 
 
 
@@ -197,6 +227,7 @@ onMounted(() => {
     const cachedFriends = Taro.getStorageSync('friends-count');
     friendsCount.value = Number(cachedFriends || 0);
   } catch (e) { /* ignore */ }
+  loadCats();
 });
 // 卡片点击触发授权（未授权时）
 const handleUserCardTap = () => {
@@ -204,6 +235,38 @@ const handleUserCardTap = () => {
     authorizeWeapp();
   }
 };
+
+// 我的猫咪管理
+const cats = ref<any[]>([])
+const loadingCats = ref(false)
+const loadCats = async () => {
+  try {
+    loadingCats.value = true
+    const res: any = await get('/api/cats/list')
+    cats.value = res?.items || []
+  } catch {
+    cats.value = []
+  } finally {
+    loadingCats.value = false
+  }
+}
+const goCreateCat = () => {
+  const target = encodeURIComponent('/pages/profile/index')
+  try { Taro.navigateTo({ url: `/pages/cats/index?redirect=${target}` }) } catch {}
+}
+const removeCat = async (id: string) => {
+  try {
+    await del(`/api/cats/delete/${id}`)
+    cats.value = cats.value.filter(c => String(c.id) !== String(id))
+    showToast({ title: '已删除', icon: 'success' })
+  } catch {
+    showToast({ title: '删除失败', icon: 'none' })
+  }
+}
+const goEditCat = (id: string) => {
+  const target = encodeURIComponent('/pages/profile/index')
+  try { Taro.navigateTo({ url: `/pages/cats/index?id=${encodeURIComponent(id)}&redirect=${target}` }) } catch {}
+}
 </script>
 
 <style lang="scss">
@@ -372,5 +435,24 @@ const handleUserCardTap = () => {
       }
     }
   }
-}
+  }
+
+  // 猫咪管理
+  .cats-section {
+    padding: 0 40rpx 40rpx;
+    .section-header { display:flex; justify-content: space-between; align-items:center; margin-bottom: 20rpx; }
+    .section-title { font-size: 32rpx; font-weight: 600; color: #fff; }
+    .cat-item {
+      background: rgba(255, 255, 255, 0.9);
+      border-radius: 20rpx;
+      padding: 24rpx;
+      margin-bottom: 16rpx;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.1);
+    }
+    .cat-name { font-size: 28rpx; color: #333; font-weight: 600; }
+    .cat-actions { display:flex; gap: 12rpx; }
+  }
 </style>

@@ -6,6 +6,7 @@ export default defineAppConfig({
     'pages/profile/index',
     'pages/login/index',
     'pages/ranking/index',
+    'pages/cats/index',
     'pages/test/index'
   ],
   entryPagePath: 'pages/index/index',

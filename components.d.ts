@@ -11,7 +11,11 @@ declare module 'vue' {
     ErrorBoundary: typeof import('./src/components/ErrorBoundary.vue')['default']
     NutButton: typeof import('@nutui/nutui-taro')['Button']
     NutCalendarCard: typeof import('@nutui/nutui-taro')['CalendarCard']
+    NutInput: typeof import('@nutui/nutui-taro')['Input']
     NutPopup: typeof import('@nutui/nutui-taro')['Popup']
+    NutRadio: typeof import('@nutui/nutui-taro')['Radio']
+    NutRadiogroup: typeof import('@nutui/nutui-taro')['Radiogroup']
+    NutSwitch: typeof import('@nutui/nutui-taro')['Switch']
     NutTextarea: typeof import('@nutui/nutui-taro')['Textarea']
     TabBar: typeof import('./src/components/TabBar.vue')['default']
   }

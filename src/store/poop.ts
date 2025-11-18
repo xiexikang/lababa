@@ -6,6 +6,7 @@ import { storageManager } from '@/utils/storage';
 export interface PoopRecord {
   id: string;
   userId: string;
+  catId?: string;
   startTime: number;
   endTime: number;
   duration: number;
@@ -85,6 +86,7 @@ export const usePoopStore = defineStore('poop', () => {
     const record: PoopRecord = {
       id: generateId(),
       userId: userInfo.value?.id || 'default-user',
+      catId: (details as any).catId || undefined,
       startTime: startTime.value,
       endTime,
       duration,

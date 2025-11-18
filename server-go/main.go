@@ -26,6 +26,7 @@ type User struct {
 type Record struct {
 	ID          string `json:"id"`
 	UserID      string `json:"userId"`
+	CatID       string `json:"catId"`
 	StartTime   int64  `json:"startTime"`
 	EndTime     int64  `json:"endTime"`
 	Duration    int64  `json:"duration"`
@@ -36,6 +37,22 @@ type Record struct {
 	Note        string `json:"note"`
 	IsCompleted bool   `json:"isCompleted"`
 	CreatedAt   int64  `json:"createdAt"`
+}
+
+type CatWeightItem struct {
+	ID       string  `json:"id"`
+	CatID    string  `json:"catId"`
+	UserID   string  `json:"userId"`
+	WeightKg float64 `json:"weightKg"`
+	Date     int64   `json:"date"`
+	Note     string  `json:"note"`
+}
+
+type Reminder struct {
+	CatID   string `json:"catId"`
+	CatName string `json:"catName"`
+	Type    string `json:"type"`
+	Message string `json:"message"`
 }
 
 type JSONDB struct {
@@ -156,22 +173,24 @@ func openMySQL() *sql.DB {
 		log.Fatal("create users table:", err)
 	}
 	_, err = db.Exec(`
-		CREATE TABLE IF NOT EXISTS records (
-			id VARCHAR(64) PRIMARY KEY,
-			userId VARCHAR(64),
-			startTime BIGINT,
-			endTime BIGINT,
-			duration BIGINT,
-			color VARCHAR(32),
-			status VARCHAR(32),
-			shape VARCHAR(32),
-			amount VARCHAR(32),
-			note TEXT,
-			isCompleted TINYINT(1),
-			createdAt BIGINT,
-			INDEX idx_records_user_end (userId, endTime)
-		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-	`)
+        CREATE TABLE IF NOT EXISTS records (
+            id VARCHAR(64) PRIMARY KEY,
+            userId VARCHAR(64),
+            catId VARCHAR(64),
+            startTime BIGINT,
+            endTime BIGINT,
+            duration BIGINT,
+            color VARCHAR(32),
+            status VARCHAR(32),
+            shape VARCHAR(32),
+            amount VARCHAR(32),
+            note TEXT,
+            isCompleted TINYINT(1),
+            createdAt BIGINT,
+            INDEX idx_records_user_end (userId, endTime),
+            INDEX idx_records_user_cat_end (userId, catId, endTime)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `)
 	if err != nil {
 		log.Fatal("create tables:", err)
 	}
@@ -233,6 +252,58 @@ func openMySQL() *sql.DB {
 	if err != nil {
 		log.Fatal("create friend_relations table:", err)
 	}
+
+	// 猫咪表
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS cats (
+			id VARCHAR(64) PRIMARY KEY,
+			userId VARCHAR(64) NOT NULL,
+			name VARCHAR(255) NOT NULL,
+			breedId VARCHAR(64),
+			avatarUrl VARCHAR(512),
+			gender VARCHAR(16),
+			birthDate BIGINT,
+			weightKg DECIMAL(5,2),
+			neutered TINYINT(1),
+			notes TEXT,
+			createdAt BIGINT,
+			INDEX idx_cats_user (userId)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+	`)
+	if err != nil {
+		log.Fatal("create cats table:", err)
+	}
+
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS cat_weights (
+			id VARCHAR(64) PRIMARY KEY,
+			catId VARCHAR(64) NOT NULL,
+			userId VARCHAR(64) NOT NULL,
+			weightKg DECIMAL(5,2) NOT NULL,
+			date BIGINT NOT NULL,
+			note TEXT,
+			INDEX idx_weights_cat_date (catId, date)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+	`)
+	if err != nil {
+		log.Fatal("create cat_weights table:", err)
+	}
+
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS cat_settings (
+			catId VARCHAR(64) PRIMARY KEY,
+			userId VARCHAR(64) NOT NULL,
+			remindEnabled TINYINT(1) DEFAULT 1,
+			remindNoRecord TINYINT(1) DEFAULT 1,
+			remindDiarrhea TINYINT(1) DEFAULT 1,
+			quietStart INT DEFAULT 0,
+			quietEnd INT DEFAULT 0
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+	`)
+	if err != nil {
+		log.Fatal("create cat_settings table:", err)
+	}
+
 	return db
 }
 
@@ -438,6 +509,12 @@ func main() {
 			where = append(where, "userId=?")
 			args = append(args, userId)
 		}
+		// 可选猫咪筛选
+		catId := r.URL.Query().Get("catId")
+		if catId != "" {
+			where = append(where, "catId=?")
+			args = append(args, catId)
+		}
 		if start != "" {
 			where = append(where, "endTime>=?")
 			args = append(args, start)
@@ -467,10 +544,10 @@ func main() {
 			}
 			offset := (pageNum - 1) * limit
 			argsItems := append(append([]any{}, args...), limit, offset)
-			q := "SELECT id,userId,startTime,endTime,duration,color,status,shape,amount,note,isCompleted,createdAt FROM records" + cond + " ORDER BY createdAt DESC LIMIT ? OFFSET ?"
+			q := "SELECT id,userId,catId,startTime,endTime,duration,color,status,shape,amount,note,isCompleted,createdAt FROM records" + cond + " ORDER BY createdAt DESC LIMIT ? OFFSET ?"
 			rows, err = db.Query(q, argsItems...)
 		} else {
-			q := "SELECT id,userId,startTime,endTime,duration,color,status,shape,amount,note,isCompleted,createdAt FROM records" + cond + " ORDER BY createdAt DESC"
+			q := "SELECT id,userId,catId,startTime,endTime,duration,color,status,shape,amount,note,isCompleted,createdAt FROM records" + cond + " ORDER BY createdAt DESC"
 			rows, err = db.Query(q, args...)
 		}
 		if err != nil {
@@ -482,7 +559,7 @@ func main() {
 		for rows.Next() {
 			var rcd Record
 			var ic int
-			_ = rows.Scan(&rcd.ID, &rcd.UserID, &rcd.StartTime, &rcd.EndTime, &rcd.Duration, &rcd.Color, &rcd.Status, &rcd.Shape, &rcd.Amount, &rcd.Note, &ic, &rcd.CreatedAt)
+			_ = rows.Scan(&rcd.ID, &rcd.UserID, &rcd.CatID, &rcd.StartTime, &rcd.EndTime, &rcd.Duration, &rcd.Color, &rcd.Status, &rcd.Shape, &rcd.Amount, &rcd.Note, &ic, &rcd.CreatedAt)
 			rcd.IsCompleted = ic != 0
 			items = append(items, rcd)
 		}
@@ -528,17 +605,18 @@ func main() {
 		shape := toString(body["shape"], "banana")
 		amount := toString(body["amount"], "moderate")
 		note := toString(body["note"], "")
-		_, _ = db.Exec("INSERT INTO records(id,userId,startTime,endTime,duration,color,status,shape,amount,note,isCompleted,createdAt) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
-			id, userID, start, end, dur, color, status, shape, amount, note, 1, now)
+		catId := toString(body["catId"], "")
+		_, _ = db.Exec("INSERT INTO records(id,userId,catId,startTime,endTime,duration,color,status,shape,amount,note,isCompleted,createdAt) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+			id, userID, catId, start, end, dur, color, status, shape, amount, note, 1, now)
 		// 更新排行榜表：当日计数 +1
 		day := time.UnixMilli(end).Format("2006-01-02")
 		var userName string
 		_ = db.QueryRow("SELECT nickName FROM users WHERE id=?", userID).Scan(&userName)
 		_, _ = db.Exec("INSERT INTO leaderboard(id,userId,userName,day,count) VALUES(?,?,?,?,1) ON DUPLICATE KEY UPDATE count=count+1", newID(), userID, userName, day)
-		row := db.QueryRow("SELECT id,userId,startTime,endTime,duration,color,status,shape,amount,note,isCompleted,createdAt FROM records WHERE id=?", id)
+		row := db.QueryRow("SELECT id,userId,catId,startTime,endTime,duration,color,status,shape,amount,note,isCompleted,createdAt FROM records WHERE id=?", id)
 		var rcd Record
 		var ic int
-		_ = row.Scan(&rcd.ID, &rcd.UserID, &rcd.StartTime, &rcd.EndTime, &rcd.Duration, &rcd.Color, &rcd.Status, &rcd.Shape, &rcd.Amount, &rcd.Note, &ic, &rcd.CreatedAt)
+		_ = row.Scan(&rcd.ID, &rcd.UserID, &rcd.CatID, &rcd.StartTime, &rcd.EndTime, &rcd.Duration, &rcd.Color, &rcd.Status, &rcd.Shape, &rcd.Amount, &rcd.Note, &ic, &rcd.CreatedAt)
 		rcd.IsCompleted = ic != 0
 		writeOK(w, map[string]any{"record": rcd})
 	}))
@@ -585,6 +663,10 @@ func main() {
 			sets = append(sets, "note=?")
 			args = append(args, v)
 		}
+		if v, ok := body["catId"].(string); ok {
+			sets = append(sets, "catId=?")
+			args = append(args, v)
+		}
 		if v, ok := body["isCompleted"].(bool); ok {
 			sets = append(sets, "isCompleted=?")
 			if v {
@@ -605,20 +687,20 @@ func main() {
 			writeErr(w, http.StatusNotFound, 500, "服务异常")
 			return
 		}
-		row := db.QueryRow("SELECT id,userId,startTime,endTime,duration,color,status,shape,amount,note,isCompleted,createdAt FROM records WHERE id=?", id)
+		row := db.QueryRow("SELECT id,userId,catId,startTime,endTime,duration,color,status,shape,amount,note,isCompleted,createdAt FROM records WHERE id=?", id)
 		var rcd Record
 		var ic int
-		_ = row.Scan(&rcd.ID, &rcd.UserID, &rcd.StartTime, &rcd.EndTime, &rcd.Duration, &rcd.Color, &rcd.Status, &rcd.Shape, &rcd.Amount, &rcd.Note, &ic, &rcd.CreatedAt)
+		_ = row.Scan(&rcd.ID, &rcd.UserID, &rcd.CatID, &rcd.StartTime, &rcd.EndTime, &rcd.Duration, &rcd.Color, &rcd.Status, &rcd.Shape, &rcd.Amount, &rcd.Note, &ic, &rcd.CreatedAt)
 		rcd.IsCompleted = ic != 0
 		writeOK(w, map[string]any{"record": rcd})
 	}))
 
 	mux.HandleFunc("/api/records/detail/", withAuth(func(w http.ResponseWriter, r *http.Request, userID string) {
 		id := strings.TrimPrefix(r.URL.Path, "/api/records/detail/")
-		row := db.QueryRow("SELECT id,userId,startTime,endTime,duration,color,status,shape,amount,note,isCompleted,createdAt FROM records WHERE id=? AND userId=?", id, userID)
+		row := db.QueryRow("SELECT id,userId,catId,startTime,endTime,duration,color,status,shape,amount,note,isCompleted,createdAt FROM records WHERE id=? AND userId=?", id, userID)
 		var rcd Record
 		var ic int
-		if err := row.Scan(&rcd.ID, &rcd.UserID, &rcd.StartTime, &rcd.EndTime, &rcd.Duration, &rcd.Color, &rcd.Status, &rcd.Shape, &rcd.Amount, &rcd.Note, &ic, &rcd.CreatedAt); err != nil {
+		if err := row.Scan(&rcd.ID, &rcd.UserID, &rcd.CatID, &rcd.StartTime, &rcd.EndTime, &rcd.Duration, &rcd.Color, &rcd.Status, &rcd.Shape, &rcd.Amount, &rcd.Note, &ic, &rcd.CreatedAt); err != nil {
 			writeErr(w, http.StatusNotFound, 500, "服务异常")
 			return
 		}
@@ -649,6 +731,11 @@ func main() {
 		if userId != "" {
 			where = append(where, "userId=?")
 			args = append(args, userId)
+		}
+		catId := r.URL.Query().Get("catId")
+		if catId != "" {
+			where = append(where, "catId=?")
+			args = append(args, catId)
 		}
 		if start != "" {
 			where = append(where, "endTime>=?")
@@ -686,7 +773,14 @@ func main() {
 		end := start.AddDate(0, 1, 0)
 		startTs := start.UnixMilli()
 		endTs := end.UnixMilli()
-		rows, err := db.Query("SELECT DATE(FROM_UNIXTIME(endTime/1000)) AS d, status, COUNT(*) AS cnt FROM records WHERE userId=? AND endTime>=? AND endTime<? GROUP BY d, status ORDER BY d", userId, startTs, endTs)
+		catId := r.URL.Query().Get("catId")
+		var rows *sql.Rows
+		var err error
+		if catId != "" {
+			rows, err = db.Query("SELECT DATE(FROM_UNIXTIME(endTime/1000)) AS d, status, COUNT(*) AS cnt FROM records WHERE userId=? AND catId=? AND endTime>=? AND endTime<? GROUP BY d, status ORDER BY d", userId, catId, startTs, endTs)
+		} else {
+			rows, err = db.Query("SELECT DATE(FROM_UNIXTIME(endTime/1000)) AS d, status, COUNT(*) AS cnt FROM records WHERE userId=? AND endTime>=? AND endTime<? GROUP BY d, status ORDER BY d", userId, startTs, endTs)
+		}
 		if err != nil {
 			writeOK(w, map[string]any{"year": y, "month": m, "days": []any{}, "totalDays": 0, "totalRecords": 0})
 			return
@@ -786,6 +880,222 @@ func main() {
 		writeOK(w, map[string]any{"list": list, "total": total, "pageNum": pageNum, "pageSize": pageSize})
 	}))
 
+	mux.HandleFunc("/api/cats/list", withAuth(func(w http.ResponseWriter, r *http.Request, userId string) {
+		q := strings.TrimSpace(r.URL.Query().Get("q"))
+		pageNum := int(getQueryInt64(r, "pageNum", int64(getQueryInt64(r, "page", 0))))
+		pageSize := int(getQueryInt64(r, "pageSize", int64(getQueryInt64(r, "limit", 0))))
+		cond := " WHERE userId=?"
+		args := []any{userId}
+		if q != "" {
+			cond += " AND name LIKE ?"
+			args = append(args, "%"+q+"%")
+		}
+		row := db.QueryRow("SELECT COUNT(*) FROM cats"+cond, args...)
+		var total int
+		_ = row.Scan(&total)
+		var rows *sql.Rows
+		var err error
+		if pageNum > 0 || pageSize > 0 {
+			if pageNum < 1 {
+				pageNum = 1
+			}
+			limit := pageSize
+			if limit <= 0 {
+				limit = 20
+			}
+			offset := (pageNum - 1) * limit
+			args2 := append(append([]any{}, args...), limit, offset)
+			rows, err = db.Query("SELECT id,userId,name,breedId,avatarUrl,gender,birthDate,weightKg,neutered,notes,createdAt FROM cats"+cond+" ORDER BY createdAt DESC LIMIT ? OFFSET ?", args2...)
+		} else {
+			rows, err = db.Query("SELECT id,userId,name,breedId,avatarUrl,gender,birthDate,weightKg,neutered,notes,createdAt FROM cats"+cond+" ORDER BY createdAt DESC", args...)
+		}
+		if err != nil {
+			writeOK(w, map[string]any{"total": 0, "items": []any{}})
+			return
+		}
+		defer rows.Close()
+		type Cat struct {
+			ID        string  `json:"id"`
+			UserID    string  `json:"userId"`
+			Name      string  `json:"name"`
+			BreedID   string  `json:"breedId"`
+			AvatarUrl string  `json:"avatarUrl"`
+			Gender    string  `json:"gender"`
+			BirthDate int64   `json:"birthDate"`
+			WeightKg  float64 `json:"weightKg"`
+			Neutered  bool    `json:"neutered"`
+			Notes     string  `json:"notes"`
+			CreatedAt int64   `json:"createdAt"`
+		}
+		var items []Cat
+		for rows.Next() {
+			var c Cat
+			var neuterInt int
+			var w sql.NullFloat64
+			_ = rows.Scan(&c.ID, &c.UserID, &c.Name, &c.BreedID, &c.AvatarUrl, &c.Gender, &c.BirthDate, &w, &neuterInt, &c.Notes, &c.CreatedAt)
+			c.Neutered = neuterInt != 0
+			if w.Valid {
+				c.WeightKg = w.Float64
+			} else {
+				c.WeightKg = 0
+			}
+			items = append(items, c)
+		}
+		data := map[string]any{"total": total, "items": items}
+		if pageNum > 0 || pageSize > 0 {
+			data["pageNum"] = pageNum
+			data["pageSize"] = func() int {
+				if pageSize <= 0 {
+					return 20
+				} else {
+					return pageSize
+				}
+			}()
+		}
+		writeOK(w, data)
+	}))
+
+	mux.HandleFunc("/api/cats/create", withAuth(func(w http.ResponseWriter, r *http.Request, userId string) {
+		if r.Method != http.MethodPost {
+			writeErr(w, http.StatusMethodNotAllowed, 500, "服务异常")
+			return
+		}
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		name := toString(body["name"], "")
+		if strings.TrimSpace(name) == "" {
+			writeErr(w, http.StatusBadRequest, 500, "服务异常")
+			return
+		}
+		breedId := toString(body["breedId"], "")
+		avatarUrl := toString(body["avatarUrl"], "")
+		gender := toString(body["gender"], "")
+		birthDate := int64(0)
+		if v, ok := body["birthDate"].(float64); ok {
+			birthDate = int64(v)
+		}
+		weight := 0.0
+		if v, ok := body["weightKg"].(float64); ok {
+			weight = v
+		}
+		neutered := 0
+		if v, ok := body["neutered"].(bool); ok {
+			if v {
+				neutered = 1
+			}
+		}
+		notes := toString(body["notes"], "")
+		id := newID()
+		now := time.Now().UnixMilli()
+		_, _ = db.Exec("INSERT INTO cats(id,userId,name,breedId,avatarUrl,gender,birthDate,weightKg,neutered,notes,createdAt) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+			id, userId, name, breedId, avatarUrl, gender, birthDate, weight, neutered, notes, now)
+		row := db.QueryRow("SELECT id,userId,name,breedId,avatarUrl,gender,birthDate,weightKg,neutered,notes,createdAt FROM cats WHERE id=?", id)
+		var cID, uID, nm, bID, av, gd, nts string
+		var bd, cr int64
+		var wVal sql.NullFloat64
+		var nt int
+		_ = row.Scan(&cID, &uID, &nm, &bID, &av, &gd, &bd, &wVal, &nt, &nts, &cr)
+		writeOK(w, map[string]any{"cat": map[string]any{
+			"id": cID, "userId": uID, "name": nm, "breedId": bID, "avatarUrl": av, "gender": gd, "birthDate": bd, "weightKg": func() float64 {
+				if wVal.Valid {
+					return wVal.Float64
+				} else {
+					return 0
+				}
+			}(), "neutered": nt != 0, "notes": nts, "createdAt": cr,
+		}})
+	}))
+
+	mux.HandleFunc("/api/cats/update/", withAuth(func(w http.ResponseWriter, r *http.Request, userId string) {
+		if r.Method != http.MethodPut {
+			writeErr(w, http.StatusMethodNotAllowed, 500, "服务异常")
+			return
+		}
+		id := strings.TrimPrefix(r.URL.Path, "/api/cats/update/")
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		var sets []string
+		var args []any
+		if v, ok := body["name"].(string); ok {
+			sets = append(sets, "name=?")
+			args = append(args, v)
+		}
+		if v, ok := body["breedId"].(string); ok {
+			sets = append(sets, "breedId=?")
+			args = append(args, v)
+		}
+		if v, ok := body["avatarUrl"].(string); ok {
+			sets = append(sets, "avatarUrl=?")
+			args = append(args, v)
+		}
+		if v, ok := body["gender"].(string); ok {
+			sets = append(sets, "gender=?")
+			args = append(args, v)
+		}
+		if v, ok := body["birthDate"].(float64); ok {
+			sets = append(sets, "birthDate=?")
+			args = append(args, int64(v))
+		}
+		if v, ok := body["weightKg"].(float64); ok {
+			sets = append(sets, "weightKg=?")
+			args = append(args, v)
+		}
+		if v, ok := body["neutered"].(bool); ok {
+			sets = append(sets, "neutered=?")
+			if v {
+				args = append(args, 1)
+			} else {
+				args = append(args, 0)
+			}
+		}
+		if v, ok := body["notes"].(string); ok {
+			sets = append(sets, "notes=?")
+			args = append(args, v)
+		}
+		if len(sets) == 0 {
+			writeErr(w, http.StatusBadRequest, 500, "服务异常")
+			return
+		}
+		q := "UPDATE cats SET " + strings.Join(sets, ", ") + " WHERE id=? AND userId=?"
+		args = append(args, id, userId)
+		res, _ := db.Exec(q, args...)
+		n, _ := res.RowsAffected()
+		if n == 0 {
+			writeErr(w, http.StatusNotFound, 500, "服务异常")
+			return
+		}
+		row := db.QueryRow("SELECT id,userId,name,breedId,avatarUrl,gender,birthDate,weightKg,neutered,notes,createdAt FROM cats WHERE id=?", id)
+		var cID, uID, nm, bID, av, gd, nts string
+		var bd, cr int64
+		var wVal sql.NullFloat64
+		var nt int
+		_ = row.Scan(&cID, &uID, &nm, &bID, &av, &gd, &bd, &wVal, &nt, &nts, &cr)
+		writeOK(w, map[string]any{"cat": map[string]any{
+			"id": cID, "userId": uID, "name": nm, "breedId": bID, "avatarUrl": av, "gender": gd, "birthDate": bd, "weightKg": func() float64 {
+				if wVal.Valid {
+					return wVal.Float64
+				} else {
+					return 0
+				}
+			}(), "neutered": nt != 0, "notes": nts, "createdAt": cr,
+		}})
+	}))
+
+	mux.HandleFunc("/api/cats/delete/", withAuth(func(w http.ResponseWriter, r *http.Request, userId string) {
+		if r.Method != http.MethodDelete {
+			writeErr(w, http.StatusMethodNotAllowed, 500, "服务异常")
+			return
+		}
+		id := strings.TrimPrefix(r.URL.Path, "/api/cats/delete/")
+		res, _ := db.Exec("DELETE FROM cats WHERE id=? AND userId=?", id, userId)
+		n, _ := res.RowsAffected()
+		if n == 0 {
+			writeErr(w, http.StatusNotFound, 500, "服务异常")
+			return
+		}
+		writeOK(w, map[string]any{"cat": map[string]string{"id": id}})
+	}))
+
 	mux.HandleFunc("/api/index/list", withAuth(func(w http.ResponseWriter, r *http.Request, userId string) {
 		// userId 来自 token
 		start := r.URL.Query().Get("start")
@@ -795,6 +1105,11 @@ func main() {
 		if userId != "" {
 			where = append(where, "userId=?")
 			args = append(args, userId)
+		}
+		catId := r.URL.Query().Get("catId")
+		if catId != "" {
+			where = append(where, "catId=?")
+			args = append(args, catId)
 		}
 		if start != "" {
 			where = append(where, "endTime>=?")
@@ -829,10 +1144,10 @@ func main() {
 			}
 			offset := (pageNum - 1) * limit
 			argsItems := append(append([]any{}, args...), limit, offset)
-			q := "SELECT id,userId,startTime,endTime,duration,color,status,shape,amount,note,isCompleted,createdAt FROM records" + cond + " ORDER BY createdAt DESC LIMIT ? OFFSET ?"
+			q := "SELECT id,userId,catId,startTime,endTime,duration,color,status,shape,amount,note,isCompleted,createdAt FROM records" + cond + " ORDER BY createdAt DESC LIMIT ? OFFSET ?"
 			rows, err = db.Query(q, argsItems...)
 		} else {
-			q := "SELECT id,userId,startTime,endTime,duration,color,status,shape,amount,note,isCompleted,createdAt FROM records" + cond + " ORDER BY createdAt DESC"
+			q := "SELECT id,userId,catId,startTime,endTime,duration,color,status,shape,amount,note,isCompleted,createdAt FROM records" + cond + " ORDER BY createdAt DESC"
 			rows, err = db.Query(q, args...)
 		}
 		if err != nil {
@@ -844,7 +1159,7 @@ func main() {
 		for rows.Next() {
 			var rcd Record
 			var ic int
-			_ = rows.Scan(&rcd.ID, &rcd.UserID, &rcd.StartTime, &rcd.EndTime, &rcd.Duration, &rcd.Color, &rcd.Status, &rcd.Shape, &rcd.Amount, &rcd.Note, &ic, &rcd.CreatedAt)
+			_ = rows.Scan(&rcd.ID, &rcd.UserID, &rcd.CatID, &rcd.StartTime, &rcd.EndTime, &rcd.Duration, &rcd.Color, &rcd.Status, &rcd.Shape, &rcd.Amount, &rcd.Note, &ic, &rcd.CreatedAt)
 			rcd.IsCompleted = ic != 0
 			items = append(items, rcd)
 		}
@@ -986,6 +1301,226 @@ func main() {
 			"色谱":   colorMap,
 			"状态评分": score,
 		})
+	})
+
+	mux.HandleFunc("/api/cats/weights/list", withAuth(func(w http.ResponseWriter, r *http.Request, userId string) {
+		catId := r.URL.Query().Get("catId")
+		if catId == "" {
+			writeErr(w, http.StatusBadRequest, 500, "服务异常")
+			return
+		}
+		var owner string
+		_ = db.QueryRow("SELECT userId FROM cats WHERE id=?", catId).Scan(&owner)
+		if owner == "" || owner != userId {
+			writeErr(w, http.StatusForbidden, 500, "服务异常")
+			return
+		}
+		rows, err := db.Query("SELECT id, catId, userId, weightKg, date, note FROM cat_weights WHERE catId=? ORDER BY date DESC", catId)
+		if err != nil {
+			writeOK(w, map[string]any{"items": []any{}})
+			return
+		}
+		defer rows.Close()
+		var list []CatWeightItem
+		for rows.Next() {
+			var it CatWeightItem
+			var wv sql.NullFloat64
+			_ = rows.Scan(&it.ID, &it.CatID, &it.UserID, &wv, &it.Date, &it.Note)
+			if wv.Valid {
+				it.WeightKg = wv.Float64
+			}
+			list = append(list, it)
+		}
+		writeOK(w, map[string]any{"items": list})
+	}))
+
+	mux.HandleFunc("/api/cats/weights/create", withAuth(func(w http.ResponseWriter, r *http.Request, userId string) {
+		if r.Method != http.MethodPost {
+			writeErr(w, http.StatusMethodNotAllowed, 500, "服务异常")
+			return
+		}
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		catId := toString(body["catId"], "")
+		if catId == "" {
+			writeErr(w, http.StatusBadRequest, 500, "服务异常")
+			return
+		}
+		var owner string
+		_ = db.QueryRow("SELECT userId FROM cats WHERE id=?", catId).Scan(&owner)
+		if owner == "" || owner != userId {
+			writeErr(w, http.StatusForbidden, 500, "服务异常")
+			return
+		}
+		var wkg float64
+		if v, ok := body["weightKg"].(float64); ok {
+			wkg = v
+		} else {
+			writeErr(w, http.StatusBadRequest, 500, "服务异常")
+			return
+		}
+		var dt int64
+		if v, ok := body["date"].(float64); ok {
+			dt = int64(v)
+		} else {
+			dt = time.Now().UnixMilli()
+		}
+		note := toString(body["note"], "")
+		id := newID()
+		_, _ = db.Exec("INSERT INTO cat_weights(id,catId,userId,weightKg,date,note) VALUES(?,?,?,?,?,?)", id, catId, userId, wkg, dt, note)
+		row := db.QueryRow("SELECT id, catId, userId, weightKg, date, note FROM cat_weights WHERE id=?", id)
+		var outId, outCat, outUser, outNote string
+		var outDate int64
+		var outW sql.NullFloat64
+		_ = row.Scan(&outId, &outCat, &outUser, &outW, &outDate, &outNote)
+		writeOK(w, map[string]any{"item": map[string]any{"id": outId, "catId": outCat, "userId": outUser, "weightKg": func() float64 {
+			if outW.Valid {
+				return outW.Float64
+			} else {
+				return 0
+			}
+		}(), "date": outDate, "note": outNote}})
+	}))
+
+	mux.HandleFunc("/api/cats/settings/get", withAuth(func(w http.ResponseWriter, r *http.Request, userId string) {
+		catId := r.URL.Query().Get("catId")
+		if catId == "" {
+			writeErr(w, http.StatusBadRequest, 500, "服务异常")
+			return
+		}
+		var owner string
+		_ = db.QueryRow("SELECT userId FROM cats WHERE id=?", catId).Scan(&owner)
+		if owner == "" || owner != userId {
+			writeErr(w, http.StatusForbidden, 500, "服务异常")
+			return
+		}
+		row := db.QueryRow("SELECT remindEnabled, remindNoRecord, remindDiarrhea, quietStart, quietEnd FROM cat_settings WHERE catId=? AND userId=?", catId, userId)
+		var re, rn, rd int
+		var qs, qe int
+		err := row.Scan(&re, &rn, &rd, &qs, &qe)
+		if err != nil {
+			writeOK(w, map[string]any{"settings": map[string]any{"remindEnabled": 1, "remindNoRecord": 1, "remindDiarrhea": 1, "quietStart": 0, "quietEnd": 0}})
+			return
+		}
+		writeOK(w, map[string]any{"settings": map[string]any{"remindEnabled": re, "remindNoRecord": rn, "remindDiarrhea": rd, "quietStart": qs, "quietEnd": qe}})
+	}))
+
+	mux.HandleFunc("/api/cats/settings/update/", withAuth(func(w http.ResponseWriter, r *http.Request, userId string) {
+		if r.Method != http.MethodPut {
+			writeErr(w, http.StatusMethodNotAllowed, 500, "服务异常")
+			return
+		}
+		catId := strings.TrimPrefix(r.URL.Path, "/api/cats/settings/update/")
+		if catId == "" {
+			writeErr(w, http.StatusBadRequest, 500, "服务异常")
+			return
+		}
+		var owner string
+		_ = db.QueryRow("SELECT userId FROM cats WHERE id=?", catId).Scan(&owner)
+		if owner == "" || owner != userId {
+			writeErr(w, http.StatusForbidden, 500, "服务异常")
+			return
+		}
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		re := 1
+		rn := 1
+		rd := 1
+		qs := 0
+		qe := 0
+		if v, ok := body["remindEnabled"].(bool); ok {
+			if v {
+				re = 1
+			} else {
+				re = 0
+			}
+		}
+		if v, ok := body["remindNoRecord"].(bool); ok {
+			if v {
+				rn = 1
+			} else {
+				rn = 0
+			}
+		}
+		if v, ok := body["remindDiarrhea"].(bool); ok {
+			if v {
+				rd = 1
+			} else {
+				rd = 0
+			}
+		}
+		if v, ok := body["quietStart"].(float64); ok {
+			qs = int(v)
+		}
+		if v, ok := body["quietEnd"].(float64); ok {
+			qe = int(v)
+		}
+		_, _ = db.Exec("INSERT INTO cat_settings(catId,userId,remindEnabled,remindNoRecord,remindDiarrhea,quietStart,quietEnd) VALUES(?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE remindEnabled=VALUES(remindEnabled), remindNoRecord=VALUES(remindNoRecord), remindDiarrhea=VALUES(remindDiarrhea), quietStart=VALUES(quietStart), quietEnd=VALUES(quietEnd)", catId, userId, re, rn, rd, qs, qe)
+		writeOK(w, map[string]any{"settings": map[string]any{"remindEnabled": re, "remindNoRecord": rn, "remindDiarrhea": rd, "quietStart": qs, "quietEnd": qe}})
+	}))
+
+	mux.HandleFunc("/api/reminders/list", withAuth(func(w http.ResponseWriter, r *http.Request, userId string) {
+		rows, err := db.Query("SELECT id, name FROM cats WHERE userId=?", userId)
+		if err != nil {
+			writeOK(w, map[string]any{"items": []any{}})
+			return
+		}
+		defer rows.Close()
+		var out []Reminder
+		for rows.Next() {
+			var cid, cname string
+			_ = rows.Scan(&cid, &cname)
+			var re, rn, rd int
+			var qs, qe int
+			_ = db.QueryRow("SELECT remindEnabled, remindNoRecord, remindDiarrhea, quietStart, quietEnd FROM cat_settings WHERE catId=? AND userId=?", cid, userId).Scan(&re, &rn, &rd, &qs, &qe)
+			if re == 0 {
+				continue
+			}
+			now := time.Now()
+			h := now.Hour()*60 + now.Minute()
+			if qs > 0 || qe > 0 {
+				if qs <= qe {
+					if h >= qs && h < qe {
+						continue
+					}
+				} else {
+					if h >= qs || h < qe {
+						continue
+					}
+				}
+			}
+			var lastEnd int64
+			_ = db.QueryRow("SELECT IFNULL(MAX(endTime),0) FROM records WHERE userId=? AND catId=?", userId, cid).Scan(&lastEnd)
+			if rn != 0 {
+				if lastEnd == 0 || now.UnixMilli()-lastEnd >= 48*60*60*1000 {
+					out = append(out, Reminder{CatID: cid, CatName: cname, Type: "no_record_48h", Message: "48小时未记录"})
+				}
+			}
+			if rd != 0 {
+				start := now.Add(-24 * time.Hour).UnixMilli()
+				var cnt int
+				_ = db.QueryRow("SELECT COUNT(*) FROM records WHERE userId=? AND catId=? AND endTime>=? AND endTime<? AND status=?", userId, cid, start, now.UnixMilli(), "diarrhea").Scan(&cnt)
+				if cnt >= 2 {
+					out = append(out, Reminder{CatID: cid, CatName: cname, Type: "diarrhea_24h", Message: "24小时腹泻次数较多"})
+				}
+			}
+		}
+		writeOK(w, map[string]any{"items": out})
+	}))
+
+	mux.HandleFunc("/api/reminders/templates", func(w http.ResponseWriter, r *http.Request) {
+		env := os.Getenv("WEAPP_SUBSCRIBE_TEMPLATES")
+		var list []string
+		if env != "" {
+			parts := strings.Split(env, ",")
+			for _, p := range parts {
+				s := strings.TrimSpace(p)
+				if s != "" {
+					list = append(list, s)
+				}
+			}
+		}
+		writeOK(w, map[string]any{"templates": list})
 	})
 
 	h := cors(mux)

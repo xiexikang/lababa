@@ -7,7 +7,7 @@ module.exports = {
   // 开发服务器配置
   devServer: {
     host: '0.0.0.0',
-    port: 3000,
+    port: 9999,
     open: false,
     allowedHosts: 'all',
     headers: {
@@ -18,26 +18,23 @@ module.exports = {
   },
   mini: {
     webpackChain(chain) {
-      // 静默第三方库的警告
       chain.module
         .rule('scss')
-        .use('1')
-        .tap(options => {
-          return {
-            ...options,
-            sassOptions: {
-              ...(options?.sassOptions || {}),
-              silenceDeprecations: ['import', 'legacy-js-api'],
-              quietDeps: true
-            }
+        .use('sass-loader')
+        .tap(options => ({
+          ...options,
+          sassOptions: {
+            ...(options?.sassOptions || {}),
+            silenceDeprecations: ['import', 'legacy-js-api'],
+            quietDeps: true
           }
-        })
+        }))
     }
   },
   h5: {
   devServer: {
     host: '0.0.0.0',
-    port: 3000,
+    port: 9999,
     open: true,
     allowedHosts: 'all',
     compress: false,
@@ -51,22 +48,17 @@ module.exports = {
     }
   },
     webpackChain(chain) {
-      // 静默第三方库的警告
       chain.module
         .rule('scss')
-        .use('1')
-        .tap(options => {
-          return {
-            ...options,
-            sassOptions: {
-              ...(options?.sassOptions || {}),
-              silenceDeprecations: ['import', 'legacy-js-api'],
-              quietDeps: true
-            }
+        .use('sass-loader')
+        .tap(options => ({
+          ...options,
+          sassOptions: {
+            ...(options?.sassOptions || {}),
+            silenceDeprecations: ['import', 'legacy-js-api'],
+            quietDeps: true
           }
-        })
-
-      // 保持默认的 stats 配置，避免与 webpack 校验冲突
+        }))
     }
   }
 }

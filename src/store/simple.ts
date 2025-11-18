@@ -81,7 +81,8 @@ export const saveRecord = async (details: any) => {
     status: details.status,
     shape: details.shape,
     amount: details.amount,
-    note: details.note
+    note: details.note,
+    catId: details.catId
   };
   const res = await post<{ record: PoopRecord }>("/api/records/create", payload);
   const record = res.record as PoopRecord;

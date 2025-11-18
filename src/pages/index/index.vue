@@ -9,6 +9,16 @@
           <text class="main-title">粑粑星人</text>
           <view class="flower-decoration">🌼</view>
         </view>
+        <view class="cat-selector" style="margin-top: 16rpx; display: flex; align-items: center; gap: 16rpx;">
+          <text>当前猫咪：</text>
+          <text v-if="activeCatId && cats.length" style="font-weight: 600;">{{ (cats.find(c=>String(c.id)===String(activeCatId))||{}).name || '未命名' }}</text>
+          <button v-if="env==='WEAPP'" class="nut-button" style="padding: 0 20rpx;" @tap="openCatSelector">切换</button>
+          <nut-button v-else style="padding: 0 20rpx;" @click="openCatSelector">切换</nut-button>
+          <button v-if="env==='WEAPP'" class="nut-button" style="padding: 0 20rpx;" @tap="goEditCurrentCat" :disabled="!activeCatId">编辑</button>
+          <nut-button v-else style="padding: 0 20rpx;" @click="goEditCurrentCat" :disabled="!activeCatId">编辑</nut-button>
+          <button v-if="env==='WEAPP'" class="nut-button" style="padding: 0 20rpx;" @tap="createCat('我的猫咪')">新增</button>
+          <nut-button v-else style="padding: 0 20rpx;" @click="createCat('我的猫咪')">新增</nut-button>
+        </view>
       </view>
 
     <!-- 主内容区域 -->
@@ -146,6 +156,51 @@
         </view>
       </nut-popup>
     
+      <nut-popup 
+        position="bottom" 
+        v-model:visible="showCatSelector"
+        round
+        class="bottom-popup"
+        :overlay-style="{ background: 'rgba(0,0,0,0.4)' }"
+      >
+        <view class="confirm-popup">
+          <view class="popup-header">
+            <text class="popup-title">选择猫咪</text>
+          </view>
+          <view class="popup-content">
+            <view v-if="!cats.length" class="popup-text">暂无猫咪，请先新增</view>
+            <view v-else>
+              <view v-for="c in cats" :key="c.id" style="display:flex;justify-content:space-between;align-items:center;padding:12rpx 0;">
+                <text>{{ c.name || '未命名' }}</text>
+                <template v-if="env==='WEAPP'">
+                  <button class="nut-button" @tap="() => selectCat(String(c.id))">选择</button>
+                </template>
+                <template v-else>
+                  <nut-button @click="() => selectCat(String(c.id))">选择</nut-button>
+                </template>
+              </view>
+            </view>
+          </view>
+          <view class="popup-actions">
+            <template v-if="env==='WEAPP'">
+              <button 
+                class="cancel-btn nut-button"
+                @tap="showCatSelector=false"
+              >取消</button>
+            </template>
+            <template v-else>
+              <nut-button 
+                color="#ccc" 
+                class="cancel-btn"
+                @click="showCatSelector=false"
+              >
+                取消
+              </nut-button>
+            </template>
+          </view>
+        </view>
+      </nut-popup>
+
       <!-- 底部导航栏 -->
 
     </view>
@@ -161,6 +216,7 @@
   import ErrorBoundary from '@/components/ErrorBoundary.vue';
   import Taro, { useShareAppMessage, useShareTimeline } from '@tarojs/taro';
   import { post, ensureAuth } from '@/utils/request'
+  import { get } from '@/utils/request'
   
   // 运行环境
   const env = Taro.getEnv();
@@ -311,6 +367,51 @@
       return result;
     }
   });
+
+  const cats = ref<any[]>([])
+  const activeCatId = ref<string>('')
+  const showCatSelector = ref(false)
+  const loadCats = async () => {
+    try {
+      if (!ensureAuth()) return
+      const res: any = await get('/api/cats/list')
+      cats.value = res?.items || []
+      if (!activeCatId.value && cats.value.length > 0) {
+        activeCatId.value = String(cats.value[0]?.id || '')
+      }
+      if ((!cats.value || cats.value.length === 0)) {
+        try {
+          const target = encodeURIComponent('/pages/index/index')
+          Taro.navigateTo({ url: `/pages/cats/index?redirect=${target}` })
+        } catch {}
+      }
+    } catch {}
+  }
+  const openCatSelector = async () => {
+    await loadCats()
+    if (cats.value && cats.value.length > 0) {
+      showCatSelector.value = true
+    }
+  }
+  const createCat = async (name: string) => {
+    try {
+      if (!ensureAuth()) return
+      const target = encodeURIComponent('/pages/index/index')
+      Taro.navigateTo({ url: `/pages/cats/index?redirect=${target}` })
+    } catch {}
+  }
+  const goEditCurrentCat = () => {
+    try {
+      if (!activeCatId.value) return
+      const target = encodeURIComponent('/pages/index/index')
+      Taro.navigateTo({ url: `/pages/cats/index?id=${encodeURIComponent(String(activeCatId.value))}&redirect=${target}` })
+    } catch {}
+  }
+  const selectCat = (id: string) => {
+    activeCatId.value = String(id)
+    showCatSelector.value = false
+    showToast({ title: '已切换', icon: 'success' })
+  }
   
   // 计算属性
   const isStart = computed(() => store.globalState.isRecording);
@@ -324,7 +425,7 @@
     try {
       if (!ensureAuth()) return
       // 保存记录到store
-      await store.saveRecord(recordDetails);
+      await store.saveRecord({ ...recordDetails, catId: activeCatId.value });
       
       // 停止计时器
       dataInfo.stopTimer();
@@ -351,6 +452,7 @@
     try {
       // 首页不主动拉取列表，延迟到需要时
       console.log('跳过首屏列表请求');
+      loadCats()
       if (env === 'WEAPP') {
         // 接受邀请（仅当链接带参数时）
         const params = (Taro.getCurrentInstance() && (Taro.getCurrentInstance() as any).router && (Taro.getCurrentInstance() as any).router.params) || {}

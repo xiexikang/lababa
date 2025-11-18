@@ -1,14 +1,20 @@
 <template>
   <view class="statistics-root">
     <!-- 页面标题 -->
-    <view class="header-section">
-      <view class="title-wrapper">
-        <text class="main-title">📊 粑粑统计</text>
-      </view>
+  <view class="header-section">
+    <view class="title-wrapper">
+      <text class="main-title">📊 粑粑统计</text>
     </view>
+    <view style="margin-top: 16rpx; display:flex; align-items:center; gap:16rpx; justify-content:center;">
+      <text>当前猫咪：</text>
+      <text v-if="activeCatId && cats.length" style="font-weight:600;">{{ (cats.find(c=>String(c.id)===String(activeCatId))||{}).name || '未命名' }}</text>
+      <button v-if="env==='WEAPP'" class="nut-button" @tap="openCatSelector">切换</button>
+      <nut-button v-else @click="openCatSelector">切换</nut-button>
+    </view>
+  </view>
 
     <!-- 统计内容 -->
-    <view class="main-content">
+  <view class="main-content">
       <view class="calendar-section">
         <nut-calendar-card
           :model-value="selectedDateObj"
@@ -23,6 +29,32 @@
           <view class="legend-item legend-success"><text>正常</text></view>
           <view class="legend-item legend-warning"><text>拉肚子</text></view>
           <view class="legend-item legend-danger"><text>便秘</text></view>
+        </view>
+      </view>
+
+      <view class="weekly-section">
+        <view class="section-header" style="display:flex;justify-content:space-between;align-items:center;">
+          <text class="section-title">⚖️ 体重趋势</text>
+          <view>
+            <template v-if="env==='WEAPP'">
+              <button class="nut-button" @tap="openAddWeight">新增体重</button>
+              <button class="nut-button" @tap="openReminderSettings">提醒设置</button>
+            </template>
+            <template v-else>
+              <nut-button @click="openAddWeight">新增体重</nut-button>
+              <nut-button @click="openReminderSettings">提醒设置</nut-button>
+            </template>
+          </view>
+        </view>
+        <view v-if="weightItems.length === 0" style="margin-top:8rpx;">暂无体重记录</view>
+        <view v-else class="color-grid" style="grid-template-columns: repeat(5, 1fr);">
+          <view v-for="w in weightItems" :key="w.id" style="text-align:center;">
+            <view style="height:120rpx;display:flex;align-items:flex-end;justify-content:center;">
+              <view :style="{width:'24rpx',height:Math.max(6,Math.round((Number(w.weightKg||0)-minWeight)/(maxWeight-minWeight||1)*100))+'rpx',background:'#8BCE92',borderRadius:'8rpx'}"></view>
+            </view>
+            <text style="font-size:22rpx;color:#666;">{{ formatDateShort(w.date) }}</text>
+            <text style="display:block;font-size:24rpx;color:#333;">{{ w.weightKg }}kg</text>
+          </view>
         </view>
       </view>
       <view class="weekly-section">
@@ -120,8 +152,8 @@
     </view>
 
     <!-- 底部导航栏 -->
-    <nut-popup 
-      v-model:visible="detailVisible" 
+  <nut-popup 
+    v-model:visible="detailVisible" 
       position="bottom" 
       round 
       class="bottom-popup"
@@ -139,8 +171,118 @@
           <text>备注：{{ detail.note || '无' }}</text>
         </view>
       </view>
-    </nut-popup>
-  </view>
+  </nut-popup>
+
+  <nut-popup position="bottom" v-model:visible="addWeightVisible" round class="bottom-popup" :overlay-style="{ background: 'rgba(0,0,0,0.4)' }">
+    <view class="record-detail-popup">
+      <view class="popup-header"><text>新增体重</text></view>
+      <view class="popup-content">
+        <template v-if="env==='WEAPP'">
+          <input class="mp-input" type="digit" :value="addWeightValue" placeholder="kg" @input="e=>addWeightValue=e.detail.value" />
+        </template>
+        <template v-else>
+          <nut-input v-model="addWeightValue" type="number" placeholder="kg" />
+        </template>
+      </view>
+      <view class="popup-actions">
+        <template v-if="env==='WEAPP'">
+          <button class="nut-button" @tap="addWeightVisible=false">取消</button>
+          <button class="nut-button" @tap="submitAddWeight">保存</button>
+        </template>
+        <template v-else>
+          <nut-button @click="addWeightVisible=false">取消</nut-button>
+          <nut-button @click="submitAddWeight">保存</nut-button>
+        </template>
+      </view>
+    </view>
+  </nut-popup>
+
+  <nut-popup position="bottom" v-model:visible="reminderVisible" round class="bottom-popup" :overlay-style="{ background: 'rgba(0,0,0,0.4)' }">
+    <view class="record-detail-popup">
+      <view class="popup-header"><text>提醒设置</text></view>
+      <view class="popup-content">
+        <view style="display:flex;align-items:center;justify-content:space-between;padding:8rpx 0;">
+          <text>总提醒开关</text>
+          <template v-if="env==='WEAPP'">
+            <switch :checked="remindEnabled" @change="e=>remindEnabled=e.detail.value" />
+          </template>
+          <template v-else>
+            <nut-switch v-model="remindEnabled" />
+          </template>
+        </view>
+        <view style="display:flex;align-items:center;justify-content:space-between;padding:8rpx 0;">
+          <text>48小时未记录</text>
+          <template v-if="env==='WEAPP'">
+            <switch :checked="remindNoRecord" @change="e=>remindNoRecord=e.detail.value" />
+          </template>
+          <template v-else>
+            <nut-switch v-model="remindNoRecord" />
+          </template>
+        </view>
+        <view style="display:flex;align-items:center;justify-content:space-between;padding:8rpx 0;">
+          <text>24小时腹泻≥2次</text>
+          <template v-if="env==='WEAPP'">
+            <switch :checked="remindDiarrhea" @change="e=>remindDiarrhea=e.detail.value" />
+          </template>
+          <template v-else>
+            <nut-switch v-model="remindDiarrhea" />
+          </template>
+        </view>
+        <view style="margin-top:12rpx;display:flex;gap:12rpx;">
+          <template v-if="env==='WEAPP'">
+            <button class="nut-button" @tap="subscribeTemplates">订阅消息</button>
+          </template>
+          <template v-else>
+            <nut-button @click="subscribeTemplates">订阅消息</nut-button>
+          </template>
+        </view>
+      </view>
+      <view class="popup-actions">
+        <template v-if="env==='WEAPP'">
+          <button class="nut-button" @tap="reminderVisible=false">取消</button>
+          <button class="nut-button" @tap="submitReminderSettings">保存</button>
+        </template>
+        <template v-else>
+          <nut-button @click="reminderVisible=false">取消</nut-button>
+          <nut-button @click="submitReminderSettings">保存</nut-button>
+        </template>
+      </view>
+    </view>
+  </nut-popup>
+  <nut-popup 
+    position="bottom" 
+    v-model:visible="showCatSelector"
+    round
+    class="bottom-popup"
+    :overlay-style="{ background: 'rgba(0,0,0,0.4)' }"
+  >
+    <view class="record-detail-popup">
+      <view class="popup-header"><text>选择猫咪</text></view>
+      <view class="popup-content">
+        <view v-if="!cats.length">暂无猫咪，请先在首页新增</view>
+        <view v-else>
+          <view v-for="c in cats" :key="c.id" style="display:flex;justify-content:space-between;align-items:center;padding:12rpx 0;">
+            <text>{{ c.name || '未命名' }}</text>
+            <template v-if="env==='WEAPP'">
+              <button class="nut-button" @tap="() => selectCat(String(c.id))">选择</button>
+            </template>
+            <template v-else>
+              <nut-button @click="() => selectCat(String(c.id))">选择</nut-button>
+            </template>
+          </view>
+        </view>
+      </view>
+      <view class="popup-actions">
+        <template v-if="env==='WEAPP'">
+          <button class="nut-button" @tap="showCatSelector=false">取消</button>
+        </template>
+        <template v-else>
+          <nut-button @click="showCatSelector=false">取消</nut-button>
+        </template>
+      </view>
+    </view>
+  </nut-popup>
+</view>
 </template>
 
 <script setup lang="ts" name="Statistics">
@@ -186,7 +328,7 @@ const loadRecent = async (reset: boolean = false) => {
   }
   const token = Taro.getStorageSync('auth-token') || ''
   if (!token) return
-  const data: any = await get('/api/records/list', { pageNum: pageNum.value, pageSize: pageSize.value })
+  const data: any = await get('/api/records/list', { pageNum: pageNum.value, pageSize: pageSize.value, catId: activeCatId.value || undefined })
   const items = Array.isArray(data?.items) ? data.items : []
   total.value = Number(data?.total || 0)
   recentRecords.value = recentRecords.value.concat(items)
@@ -196,7 +338,7 @@ const loadSummary = async () => {
   const token = Taro.getStorageSync('auth-token') || ''
   if (!token) return
   try {
-    const data: any = await get('/api/statistics/summary')
+    const data: any = await get('/api/statistics/summary', { catId: activeCatId.value || undefined })
     const sum = data?.summary
     if (sum) {
       summary.value = {
@@ -401,7 +543,7 @@ const loadStatistics = async () => {
     store.init();
     await Promise.all([
       (async () => {
-        const resp: any = await get('/api/records/list')
+        const resp: any = await get('/api/records/list', { catId: activeCatId.value || undefined })
         const items: any[] = Array.isArray(resp?.items) ? resp.items : []
         const s = startOfWeek()
         const e = endOfWeek()
@@ -419,7 +561,9 @@ const loadStatistics = async () => {
         weekData.value = { daysCount: daySet.size, recordsCount: total, colorDist, score }
       })(),
       (async () => {
-        const m: any = await get('/api/statistics/month-days')
+        const y = new Date().getFullYear()
+        const mth = new Date().getMonth() + 1
+        const m: any = await get('/api/statistics/month-days', { year: y, month: mth, catId: activeCatId.value || undefined })
         monthDays.value = Array.isArray(m?.days) ? m.days : []
         monthDayStatusMap.value = m?.dayStatusMap || {}
       })(),
@@ -432,8 +576,99 @@ const loadStatistics = async () => {
 };
 
 onMounted(() => {
+  loadCats();
   loadStatistics();
+  loadWeights();
 });
+const env = Taro.getEnv()
+const cats = ref<any[]>([])
+const activeCatId = ref<string>('')
+const showCatSelector = ref(false)
+const loadCats = async () => {
+  const token = Taro.getStorageSync('auth-token') || ''
+  if (!token) return
+  const res: any = await get('/api/cats/list')
+  cats.value = res?.items || []
+  if (!activeCatId.value && cats.value.length > 0) {
+    activeCatId.value = String(cats.value[0]?.id || '')
+  }
+}
+const openCatSelector = async () => { await loadCats(); if (cats.value.length) showCatSelector.value = true }
+const selectCat = async (id: string) => { activeCatId.value = String(id); showCatSelector.value = false; await loadStatistics() }
+
+const weightItems = ref<any[]>([])
+const addWeightVisible = ref(false)
+const addWeightValue = ref<string>('')
+const minWeight = computed(() => {
+  const vals = weightItems.value.map(w => Number(w.weightKg || 0)).filter(n => !Number.isNaN(n))
+  return vals.length ? Math.min(...vals) : 0
+})
+const maxWeight = computed(() => {
+  const vals = weightItems.value.map(w => Number(w.weightKg || 0)).filter(n => !Number.isNaN(n))
+  return vals.length ? Math.max(...vals) : 1
+})
+const formatDateShort = (dateStr: string) => {
+  const d = new Date(dateStr)
+  return `${d.getMonth() + 1}/${d.getDate()}`
+}
+const loadWeights = async () => {
+  const token = Taro.getStorageSync('auth-token') || ''
+  if (!token) return
+  try {
+    const data: any = await get('/api/weights/list', { catId: activeCatId.value || undefined, pageSize: 20 })
+    weightItems.value = Array.isArray(data?.items) ? data.items : []
+  } catch (_) { }
+}
+const openAddWeight = () => {
+  addWeightValue.value = ''
+  addWeightVisible.value = true
+}
+const submitAddWeight = async () => {
+  const v = Number(addWeightValue.value)
+  if (!v || Number.isNaN(v)) {
+    Taro.showToast({ title: '请输入有效体重', icon: 'none' })
+    return
+  }
+  const token = Taro.getStorageSync('auth-token') || ''
+  if (!token) { ensureAuth(); return }
+  try {
+    await get('/api/weights/add', { weightKg: v, date: new Date().toISOString(), catId: activeCatId.value || undefined })
+    addWeightVisible.value = false
+    await loadWeights()
+  } catch (_) {
+    Taro.showToast({ title: '保存失败', icon: 'error' })
+  }
+}
+
+const reminderVisible = ref(false)
+const remindEnabled = ref(true)
+const remindNoRecord = ref(false)
+const remindDiarrhea = ref(false)
+const openReminderSettings = () => { reminderVisible.value = true }
+const submitReminderSettings = async () => {
+  const token = Taro.getStorageSync('auth-token') || ''
+  if (!token) { ensureAuth(); return }
+  try {
+    await get('/api/reminder/save', { enabled: remindEnabled.value, noRecord48h: remindNoRecord.value, diarrhea2x24h: remindDiarrhea.value, catId: activeCatId.value || undefined })
+    reminderVisible.value = false
+    Taro.showToast({ title: '已保存', icon: 'success' })
+  } catch (_) {
+    Taro.showToast({ title: '保存失败', icon: 'error' })
+  }
+}
+const subscribeTemplates = async () => {
+  if (env === 'WEAPP') {
+    try {
+      // @ts-ignore
+      await Taro.requestSubscribeMessage({ tmplIds: [] })
+      Taro.showToast({ title: '订阅成功', icon: 'success' })
+    } catch (_) {
+      Taro.showToast({ title: '订阅失败', icon: 'error' })
+    }
+  } else {
+    Taro.showToast({ title: '仅微信小程序支持订阅', icon: 'none' })
+  }
+}
 </script>
 
 <style lang="scss">
