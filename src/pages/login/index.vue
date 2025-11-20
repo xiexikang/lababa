@@ -5,7 +5,7 @@
       <text class="subtitle">为保证功能正常使用，请完成登录授权</text>
 
       <view class="actions">
-        <button v-if="env==='WEAPP'" class="login-btn" @tap="doLogin" @click="doLogin">微信授权登录</button>
+        <nut-button v-if="env==='WEAPP'" type="primary" class="login-btn" @click="doLogin">微信授权登录</nut-button>
         <nut-button v-else type="primary" class="login-btn" @click="doLogin">登录</nut-button>
       </view>
     </view>

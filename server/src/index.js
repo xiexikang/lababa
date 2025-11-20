@@ -111,13 +111,7 @@ app.get('/api/users/detail/:id', (req, res) => {
   res.json({ user })
 })
 
-app.put('/api/users/update/:id', (req, res) => {
-  const db = loadDB()
-  const payload = { id: req.params.id, nickName: req.body?.nickName, avatarUrl: req.body?.avatarUrl }
-  const user = upsertUser(db, payload)
-  saveDB(db)
-  res.json({ user })
-})
+// 旧接口 /api/users/update/:id 已移除（使用 server-go 的鉴权版本）
 
 app.get('/api/records/list', (req, res) => {
   const db = loadDB()

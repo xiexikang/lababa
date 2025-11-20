@@ -21,21 +21,22 @@
       
       <view class="test-section">
         <text class="section-title">功能测试</text>
-        <nut-button @click="testStartRecording" size="small">开始计时</nut-button>
-        <nut-button @click="testStopRecording" size="small">停止计时</nut-button>
-        <nut-button @click="testAddRecord" size="small">添加测试记录</nut-button>
+        <NutButton @click="testStartRecording" size="small">开始计时</NutButton>
+        <NutButton @click="testStopRecording" size="small">停止计时</NutButton>
+        <NutButton @click="testAddRecord" size="small">添加测试记录</NutButton>
       </view>
       
       <view class="test-section">
         <text class="section-title">本地存储测试</text>
-        <nut-button @click="testStorage" size="small">测试存储</nut-button>
-        <nut-button @click="clearRecords" size="small">清空记录</nut-button>
+        <NutButton @click="testStorage" size="small">测试存储</NutButton>
+        <NutButton @click="clearRecords" size="small">清空记录</NutButton>
       </view>
     </view>
   </view>
 </template>
 
 <script setup>
+import { Button as NutButton } from '@nutui/nutui-taro'
 import { ref, computed, onMounted } from 'vue';
 import { usePoopStore } from '@/store/poop';
 import { storageManager } from '@/utils/storage';

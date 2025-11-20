@@ -1,16 +1,9 @@
 <template>
   <view class="ranking-container">
-    <!-- 排行榜标题 -->
-  <view class="ranking-header">
-    <text class="title">👑 粑王</text>
-    <text class="subtitle">看看谁是拉粑达人</text>
-  </view>
-  <view style="display:flex; align-items:center; justify-content:center; gap: 16rpx; margin-bottom: 12rpx;">
-    <text>当前猫咪：</text>
-    <text v-if="activeCatId && cats.length" style="font-weight:600;">{{ (cats.find(c=>String(c.id)===String(activeCatId))||{}).name || '未命名' }}</text>
-    <button v-if="env==='WEAPP'" class="nut-button" @tap="openCatSelector">切换</button>
-    <nut-button v-else @click="openCatSelector">切换</nut-button>
-  </view>
+    <view class="ranking-header">
+      <text class="title">👑 粑王</text>
+      <text class="subtitle">看看谁是拉粑达人</text>
+    </view>
 
     <!-- 周期切换栏 -->
   <view class="period-tabs">
@@ -47,8 +40,8 @@
             mode="aspectFill"
           />
           <view class="user-details">
-            <text class="nickname">{{ user.nickname || '匿名用户' }}</text>
-            <text class="count-text">共拉 {{ user.totalCount }} 次</text>
+            <text class="nickname">{{ user.catName || '-' }}</text>
+            <text class="count-text">{{ user.nickname || '-' }}</text>
           </view>
         </view>
 
@@ -66,7 +59,6 @@
       <text class="empty-subtext">快去拉粑粑成为第一个上榜的人吧！</text>
     </view>
 
-    <!-- 我的排名 -->
     <view v-if="myRanking" class="my-ranking">
       <view class="my-ranking-content">
         <text class="my-rank">我的排名: {{ myRanking.rank }}</text>
@@ -79,48 +71,7 @@
       <nut-button type="primary" @click="loadMore">加载更多</nut-button>
     </view>
   </view>
-
-  <view class="my-profile" v-if="myNickname">
-    <image class="avatar" :src="myAvatar" mode="aspectFill" />
-    <view class="user-box">
-      <text class="nickname">{{ myNickname }}</text>
-      <text class="hint">我的粑王名片</text>
-      <text class="hint">本期当前猫次数：{{ myCatPeriodCount }}</text>
-    </view>
-  </view>
-  <nut-popup 
-    position="bottom" 
-    v-model:visible="showCatSelector"
-    round
-    class="bottom-popup"
-    :overlay-style="{ background: 'rgba(0,0,0,0.4)' }"
-  >
-    <view class="record-detail-popup">
-      <view class="popup-header"><text>选择猫咪</text></view>
-      <view class="popup-content">
-        <view v-if="!cats.length">暂无猫咪，请先在首页新增</view>
-        <view v-else>
-          <view v-for="c in cats" :key="c.id" style="display:flex;justify-content:space-between;align-items:center;padding:12rpx 0;">
-            <text>{{ c.name || '未命名' }}</text>
-            <template v-if="env==='WEAPP'">
-              <button class="nut-button" @tap="() => selectCat(String(c.id))">选择</button>
-            </template>
-            <template v-else>
-              <nut-button @click="() => selectCat(String(c.id))">选择</nut-button>
-            </template>
-          </view>
-        </view>
-      </view>
-      <view class="popup-actions">
-        <template v-if="env==='WEAPP'">
-          <button class="nut-button" @tap="showCatSelector=false">取消</button>
-        </template>
-        <template v-else>
-          <nut-button @click="showCatSelector=false">取消</nut-button>
-        </template>
-      </view>
-    </view>
-  </nut-popup>
+  
 </template>
 
 <script setup lang="ts">
@@ -133,6 +84,7 @@ import { get, ensureAuth } from '@/utils/request'
 interface RankingUser {
   id: string
   nickname: string
+  catName: string
   avatar: string
   totalCount: number
   totalDuration: number
@@ -171,7 +123,6 @@ const periodTabs = [
 const setActivePeriod = (p: Period) => {
   activePeriod.value = p
   updateRanking()
-  computeMyCatPeriodCount()
 }
 
 // 获取排名图标
@@ -195,10 +146,11 @@ const updateRanking = async () => {
     const ui = storageManager.getUserInfo()
     rankingList.value = (list as any[]).map((it: any) => ({
       id: it.id,
-      nickname: ui && ui.id === it.id ? (ui.nickName || '') : '',
+      nickname: it.nickname || '',
+      catName: it.catName || '',
       avatar: ui && ui.id === it.id ? (ui.avatarUrl || '') : '',
-      totalCount: it.totalCount,
-      totalDuration: it.totalDuration
+      totalCount: Number(it.totalCount || 0),
+      totalDuration: Number(it.totalDuration || 0)
     })) as any
     const userInfo = storageManager.getUserInfo()
     if (userInfo && userInfo.id) {
@@ -229,10 +181,11 @@ const loadMore = async () => {
     const ui = storageManager.getUserInfo()
     const more = (list as any[]).map((it: any) => ({
       id: it.id,
-      nickname: ui && ui.id === it.id ? (ui.nickName || '') : '',
+      nickname: it.nickname || '',
+      catName: it.catName || '',
       avatar: ui && ui.id === it.id ? (ui.avatarUrl || '') : '',
-      totalCount: it.totalCount,
-      totalDuration: it.totalDuration
+      totalCount: Number(it.totalCount || 0),
+      totalDuration: Number(it.totalDuration || 0)
     })) as any
     rankingList.value = rankingList.value.concat(more)
   } catch (e) {
@@ -250,7 +203,6 @@ onMounted(() => {
   refreshMyUser()
   const onUserUpdated = () => { refreshMyUser(); updateRanking() }
   try { Taro.eventCenter.on('user-updated', onUserUpdated) } catch {}
-  loadCats().then(computeMyCatPeriodCount)
 })
 
 onUnmounted(() => {
@@ -258,54 +210,6 @@ onUnmounted(() => {
 })
 
 const env = Taro.getEnv()
-const cats = ref<any[]>([])
-const activeCatId = ref<string>('')
-const showCatSelector = ref(false)
-const loadCats = async () => {
-  const token = Taro.getStorageSync('auth-token') || ''
-  if (!token) return
-  const res: any = await get('/api/cats/list')
-  cats.value = res?.items || []
-  if (!activeCatId.value && cats.value.length > 0) {
-    activeCatId.value = String(cats.value[0]?.id || '')
-  }
-}
-const openCatSelector = async () => { await loadCats(); if (cats.value.length) showCatSelector.value = true }
-const selectCat = async (id: string) => { activeCatId.value = String(id); showCatSelector.value = false; await computeMyCatPeriodCount() }
-
-const myCatPeriodCount = ref(0)
-const periodBounds = (p: Period) => {
-  const now = new Date()
-  if (p === 'day') {
-    const s = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0,0,0,0).getTime()
-    const e = s + 24*60*60*1000
-    return { s, e }
-  } else if (p === 'week') {
-    const d = new Date()
-    const dow = d.getDay()
-    const diff = (dow === 0 ? -6 : 1 - dow)
-    d.setHours(0,0,0,0)
-    d.setDate(d.getDate() + diff)
-    const s = d.getTime()
-    const e = s + 7*24*60*60*1000
-    return { s, e }
-  } else if (p === 'month') {
-    const sDate = new Date(now.getFullYear(), now.getMonth(), 1, 0,0,0,0)
-    const eDate = new Date(now.getFullYear(), now.getMonth()+1, 1, 0,0,0,0)
-    return { s: sDate.getTime(), e: eDate.getTime() }
-  } else {
-    return { s: 0, e: new Date(now.getFullYear(), now.getMonth(), now.getDate()+1, 0,0,0,0).getTime() }
-  }
-}
-const computeMyCatPeriodCount = async () => {
-  const token = Taro.getStorageSync('auth-token') || ''
-  if (!token || !activeCatId.value) { myCatPeriodCount.value = 0; return }
-  const { s, e } = periodBounds(activePeriod.value)
-  try {
-    const data: any = await get('/api/records/list', { start: s, end: e, catId: activeCatId.value, pageNum: 1, pageSize: 1 })
-    myCatPeriodCount.value = Number(data?.total || 0)
-  } catch { myCatPeriodCount.value = 0 }
-}
 </script>
 
 <style lang="scss">
@@ -490,7 +394,7 @@ const computeMyCatPeriodCount = async () => {
 
 .my-ranking {
   position: fixed;
-  bottom: 120rpx;
+  bottom: 0rpx;
   left: 20rpx;
   right: 20rpx;
   background: white;

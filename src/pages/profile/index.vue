@@ -12,18 +12,13 @@
           <text class="user-name">{{ userInfo.nickName || '未授权用户' }}</text>
           <text class="user-desc">记录健康生活，关注身体状况</text>
         </view>
+        <view class="edit-caret" @tap="openEditNickname">▶</view>
       </view>
 
       <!-- 授权登录按钮 -->
       <view class="auth-section" v-if="!userInfo.avatarUrl">
-        <template v-if="env === 'WEAPP'">
-          <button class="auth-btn" @tap="authorizeWeapp">申请微信授权登录</button>
-          <view class="auth-tip">点击用户卡片也可授权</view>
-        </template>
-        <template v-else>
-          <nut-button type="primary" color="#8BCE92" class="auth-btn" @click="authorizeWeapp">申请微信授权登录</nut-button>
-          <view class="auth-tip">请在微信小程序中打开以授权头像与昵称</view>
-        </template>
+        <nut-button type="primary" color="#8BCE92" class="auth-btn" @click="authorizeWeapp">申请微信授权登录</nut-button>
+        <view class="auth-tip">点击用户卡片也可授权</view>
       </view>
     </view>
 
@@ -48,34 +43,22 @@
       <view class="section-header">
         <text class="section-title">🏆 我的成就</text>
       </view>
-      <view class="achievement-list">
-        <view class="achievement-item">
-          <view class="achievement-icon">🌟</view>
-          <view class="achievement-info">
-            <text class="achievement-title">坚持记录</text>
-            <text class="achievement-desc">已连续记录7天</text>
-          </view>
-        </view>
-        <view class="achievement-item">
-          <view class="achievement-icon">💪</view>
-          <view class="achievement-info">
-            <text class="achievement-title">健康达人</text>
-            <text class="achievement-desc">记录超过30次</text>
-          </view>
+    <view class="achievement-list">
+      <view v-for="a in achievements" :key="a.id" class="achievement-item">
+        <view class="achievement-icon">🌟</view>
+        <view class="achievement-info">
+          <text class="achievement-title">{{ a.title }}</text>
+          <text class="achievement-desc">{{ a.desc }}</text>
         </view>
       </view>
+    </view>
     </view>
 
     <!-- 我的猫咪管理 -->
     <view class="cats-section">
       <view class="section-header">
         <text class="section-title">🐱 我的猫咪</text>
-        <template v-if="env==='WEAPP'">
-          <button class="nut-button" @tap="goCreateCat">新增</button>
-        </template>
-        <template v-else>
-          <nut-button type="primary" @click="goCreateCat">新增</nut-button>
-        </template>
+        <nut-button type="primary" @click="goCreateCat">新增</nut-button>
       </view>
       <view v-if="loadingCats" class="cat-item"><text>加载中...</text></view>
       <view v-else-if="!cats.length" class="cat-item"><text>暂无猫咪，点击新增创建</text></view>
@@ -83,20 +66,26 @@
         <view v-for="c in cats" :key="c.id" class="cat-item">
           <text class="cat-name">{{ c.name || '未命名' }}</text>
           <view class="cat-actions">
-            <template v-if="env==='WEAPP'">
-              <button class="nut-button" @tap="() => goEditCat(String(c.id))">编辑</button>
-              <button class="nut-button" @tap="() => removeCat(String(c.id))">删除</button>
-            </template>
-            <template v-else>
-              <nut-button type="primary" @click="() => goEditCat(String(c.id))">编辑</nut-button>
-              <nut-button type="danger" @click="() => removeCat(String(c.id))">删除</nut-button>
-            </template>
+            <nut-button type="primary" @click="() => goEditCat(String(c.id))">编辑</nut-button>
+            <nut-button type="danger" @click="() => removeCat(String(c.id))">删除</nut-button>
           </view>
         </view>
       </view>
     </view>
 
-    <!-- 底部导航栏 -->
+    <!-- 昵称编辑弹窗 -->
+    <nut-popup v-model:visible="editVisible" position="bottom" round class="bottom-popup" :overlay-style="{ background: 'rgba(0,0,0,0.4)' }">
+      <view class="record-detail-popup">
+        <view class="popup-header"><text>编辑昵称</text></view>
+        <view class="popup-content">
+          <nut-input v-model="editNickname" type="text" placeholder="输入昵称" />
+        </view>
+        <view class="popup-actions">
+          <nut-button @click="()=>{editVisible=false}">取消</nut-button>
+          <nut-button @click="submitEditNickname">保存</nut-button>
+        </view>
+      </view>
+    </nut-popup>
   </view>
 </template>
 
@@ -105,7 +94,7 @@ import { reactive, computed, ref, onMounted } from 'vue';
 import Taro from '@tarojs/taro';
 import { useSimpleStore } from '@/store/simple';
 import { showToast } from '@/utils/toast';
-import { post, postRaw, get, del } from '@/utils/request'
+import { post, postRaw, get, del, put, ensureAuth } from '@/utils/request'
 
 // 使用简单的状态管理
 const store = useSimpleStore();
@@ -122,10 +111,13 @@ const userInfo = reactive({
 });
 
 // 统计数据
-const totalCount = computed(() => store.globalState.records.length);
+const stats = reactive({ totalCount: 0, totalMinutes: 0, friendsCount: 0 })
+const totalCount = computed(() => Number(stats.totalCount || store.globalState.records.length));
 const totalMinutes = computed(() => {
-  const totalSeconds = store.globalState.records.reduce((sum, r) => sum + (r?.duration || 0), 0);
-  return Math.floor(totalSeconds / 60);
+  const v = Number(stats.totalMinutes || 0)
+  if (v) return v
+  const totalSeconds = store.globalState.records.reduce((sum, r) => sum + (r?.duration || 0), 0)
+  return Math.floor(totalSeconds / 60)
 });
 const friendsCount = ref(0);
 
@@ -228,6 +220,19 @@ onMounted(() => {
     friendsCount.value = Number(cachedFriends || 0);
   } catch (e) { /* ignore */ }
   loadCats();
+  // 加载个人统计
+  const token = Taro.getStorageSync('auth-token') || ''
+  if (token) {
+    get('/api/profile/stats').then((res: any) => {
+      const s = res?.stats || {}
+      stats.totalCount = Number(s.totalCount || 0)
+      stats.totalMinutes = Number(s.totalMinutes || 0)
+      friendsCount.value = Number(s.friendsCount || 0)
+    }).catch(() => {})
+    get('/api/profile/achievements').then((res: any) => {
+      achievements.value = Array.isArray(res?.list) ? res.list : []
+    }).catch(() => {})
+  }
 });
 // 卡片点击触发授权（未授权时）
 const handleUserCardTap = () => {
@@ -266,6 +271,38 @@ const removeCat = async (id: string) => {
 const goEditCat = (id: string) => {
   const target = encodeURIComponent('/pages/profile/index')
   try { Taro.navigateTo({ url: `/pages/cats/index?id=${encodeURIComponent(id)}&redirect=${target}` }) } catch {}
+}
+// 成就
+const achievements = ref<any[]>([])
+
+// 昵称编辑
+const editVisible = ref(false)
+const editNickname = ref('')
+const openEditNickname = () => {
+  editNickname.value = userInfo.nickName || ''
+  editVisible.value = true
+}
+const submitEditNickname = async () => {
+  const nn = String(editNickname.value || '').trim()
+  if (!nn) { showToast({ title: '请输入昵称', icon: 'none' }); return }
+  try {
+    const token = Taro.getStorageSync('auth-token') || ''
+    if (!token) { ensureAuth(); return }
+    const res: any = await put('/api/users/update', { nickName: nn })
+    const user = res?.user || null
+    if (user) {
+      userInfo.nickName = user.nickName || nn
+      Taro.setStorageSync('user-info', user)
+      try { Taro.eventCenter.trigger('user-updated', { user }) } catch {}
+    } else {
+      userInfo.nickName = nn
+      saveUserInfo()
+    }
+    editVisible.value = false
+    showToast({ title: '已保存', icon: 'success' })
+  } catch (e) {
+    showToast({ title: '保存失败', icon: 'error' })
+  }
 }
 </script>
 
@@ -338,6 +375,12 @@ const goEditCat = (id: string) => {
           font-size: 24rpx;
           color: #666;
         }
+      }
+      .edit-caret {
+        margin-left: 12rpx;
+        font-size: 32rpx;
+        color: #666;
+        padding: 12rpx;
       }
     }
   }
@@ -456,3 +499,5 @@ const goEditCat = (id: string) => {
     .cat-actions { display:flex; gap: 12rpx; }
   }
 </style>
+
+ 

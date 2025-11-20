@@ -94,49 +94,32 @@
           <view class="section-header">
             <text class="section-title">📝 备注（选填）</text>
           </view>
-          <template v-if="env==='WEAPP'">
-            <textarea 
-              class="mp-textarea"
-              :value="form.note"
-              placeholder="有什么特别想记录的吗？"
-              maxlength="200"
-              @input="onNoteInput"
-            />
-          </template>
-          <template v-else>
-            <nut-textarea 
-              v-model="form.note" 
-              placeholder="有什么特别想记录的吗？"
-              :autosize="{ minHeight: 120 }"
-              maxlength="200"
-            />
-          </template>
+          <nut-textarea 
+            v-model="form.note" 
+            placeholder="有什么特别想记录的吗？"
+            :autosize="{ minHeight: 120 }"
+            maxlength="200"
+          />
         </view>
       </scroll-view>
 
       <!-- 底部按钮 -->
       <view class="popup-footer">
-        <template v-if="env==='WEAPP'">
-          <button class="cancel-btn nut-button" @tap="dataInfo.close()">我再看看</button>
-          <button class="confirm-btn nut-button" :disabled="!isFormValid" @tap="dataInfo.confirm()">确定保存</button>
-        </template>
-        <template v-else>
-          <nut-button 
-            color="#ccc" 
-            class="cancel-btn"
-            @click="dataInfo.close()"
-          >
-            我再看看
-          </nut-button>
-          <nut-button 
-            color="#8BCE92" 
-            class="confirm-btn"
-            @click="dataInfo.confirm()"
-            :disabled="!isFormValid"
-          >
-            确定保存
-          </nut-button>
-        </template>
+        <nut-button 
+          color="#ccc" 
+          class="cancel-btn"
+          @click="dataInfo.close()"
+        >
+          我再看看
+        </nut-button>
+        <nut-button 
+          color="#8BCE92" 
+          class="confirm-btn"
+          @click="dataInfo.confirm()"
+          :disabled="!isFormValid"
+        >
+          确定保存
+        </nut-button>
       </view>
     </view>
   </nut-popup>
@@ -144,8 +127,7 @@
 
 <script setup name="DetailRecordPopup">
   import { ref, reactive, computed, toRefs, watch, defineProps } from 'vue';
-  import Taro from '@tarojs/taro'
-  const env = Taro.getEnv()
+  
   
   const props = defineProps({
     modelValue: { type: Boolean, default: false },

@@ -1,7 +1,6 @@
 <template>
   <ErrorBoundary>
     <view class="Index-root">
-    <nut-button>测试</nut-button>
 
       <!-- 标题区域 -->
       <view class="header-section">
@@ -12,12 +11,9 @@
         <view class="cat-selector" style="margin-top: 16rpx; display: flex; align-items: center; gap: 16rpx;">
           <text>当前猫咪：</text>
           <text v-if="activeCatId && cats.length" style="font-weight: 600;">{{ (cats.find(c=>String(c.id)===String(activeCatId))||{}).name || '未命名' }}</text>
-          <button v-if="env==='WEAPP'" class="nut-button" style="padding: 0 20rpx;" @tap="openCatSelector">切换</button>
-          <nut-button v-else style="padding: 0 20rpx;" @click="openCatSelector">切换</nut-button>
-          <button v-if="env==='WEAPP'" class="nut-button" style="padding: 0 20rpx;" @tap="goEditCurrentCat" :disabled="!activeCatId">编辑</button>
-          <nut-button v-else style="padding: 0 20rpx;" @click="goEditCurrentCat" :disabled="!activeCatId">编辑</nut-button>
-          <button v-if="env==='WEAPP'" class="nut-button" style="padding: 0 20rpx;" @tap="createCat('我的猫咪')">新增</button>
-          <nut-button v-else style="padding: 0 20rpx;" @click="createCat('我的猫咪')">新增</nut-button>
+          <nut-button style="padding: 0 20rpx;" @click="openCatSelector">切换</nut-button>
+          <nut-button style="padding: 0 20rpx;" @click="goEditCurrentCat" :disabled="!activeCatId">编辑</nut-button>
+          <nut-button style="padding: 0 20rpx;" @click="createCat('我的猫咪')">新增</nut-button>
         </view>
       </view>
 
@@ -30,13 +26,7 @@
             <text class="timer-text">准备开始</text>
           </view>
           <view class="action-buttons">
-            <button 
-              v-if="env==='WEAPP'"
-              class="start-btn"
-              @tap="dataInfo.start()"
-            >💩 我要拉了哦</button>
             <nut-button 
-              v-else
               color="#8BCE92" 
               class="start-btn"
               @click="dataInfo.start()"
@@ -60,30 +50,20 @@
           
           <view class="action-buttons recording">
             <view class="btn-group">
-              <template v-if="env==='WEAPP'">
-                <button class="complete-btn nut-button" @tap="dataInfo.finally()">
-                  <text class="btn-text" style="white-space: nowrap;">😌 拉完了</text>
-                </button>
-                <button class="help-btn nut-button" @tap="dataInfo.showHelp = true">
-                  <text class="btn-text" style="white-space: nowrap;">🙏 请祈祷</text>
-                </button>
-              </template>
-              <template v-else>
-                <nut-button 
-                  color="#6ecb6d" 
-                  class="complete-btn"
-                  @click="dataInfo.finally()"
-                >
-                  <text class="btn-text" style="white-space: nowrap;">😌 拉完了</text>
-                </nut-button>
-                <nut-button 
-                  color="#ffb60d" 
-                  class="help-btn"
-                  @click="dataInfo.showHelp = true"
-                >
-                  <text class="btn-text" style="white-space: nowrap;">🙏 请祈祷</text>
-                </nut-button>
-              </template>
+              <nut-button 
+                color="#6ecb6d" 
+                class="complete-btn"
+                @click="dataInfo.finally()"
+              >
+                <text class="btn-text" style="white-space: nowrap;">😌 拉完了</text>
+              </nut-button>
+              <nut-button 
+                color="#ffb60d" 
+                class="help-btn"
+                @click="dataInfo.showHelp = true"
+              >
+                <text class="btn-text" style="white-space: nowrap;">🙏 请祈祷</text>
+              </nut-button>
             </view>
           </view>
           
@@ -96,8 +76,7 @@
 
     <!-- 右侧悬浮分享按钮 -->
     <view class="floating-share">
-      <button v-if="env === 'WEAPP'" class="share-inner" @tap="handleInviteAndShare">👥 一起拉</button>
-      <nut-button v-else class="share-inner" color="#ff69b4" @click="dataInfo.shareTogether()">👥 一起拉</nut-button>
+      <nut-button class="share-inner" color="#ff69b4" @click="handleInviteAndShare">👥 一起拉</nut-button>
     </view>
 
     <!-- 底部装饰 -->
@@ -126,32 +105,20 @@
             <text class="popup-text">确定要放弃这次记录吗？</text>
           </view>
           <view class="popup-actions">
-            <template v-if="env==='WEAPP'">
-              <button 
-                class="cancel-btn nut-button"
-                @tap="dataInfo.showGiveUpConfirm = false"
-              >取消</button>
-              <button 
-                class="confirm-btn nut-button"
-                @tap="dataInfo.giveUp()"
-              >确认放弃</button>
-            </template>
-            <template v-else>
-              <nut-button 
-                color="#ccc" 
-                class="cancel-btn"
-                @click="dataInfo.showGiveUpConfirm = false"
-              >
-                取消
-              </nut-button>
-              <nut-button 
-                color="#ff6b6b" 
-                class="confirm-btn"
-                @click="dataInfo.giveUp()"
-              >
-                确认放弃
-              </nut-button>
-            </template>
+            <nut-button 
+              color="#ccc" 
+              class="cancel-btn"
+              @click="dataInfo.showGiveUpConfirm = false"
+            >
+              取消
+            </nut-button>
+            <nut-button 
+              color="#ff6b6b" 
+              class="confirm-btn"
+              @click="dataInfo.giveUp()"
+            >
+              确认放弃
+            </nut-button>
           </view>
         </view>
       </nut-popup>
@@ -172,31 +139,18 @@
             <view v-else>
               <view v-for="c in cats" :key="c.id" style="display:flex;justify-content:space-between;align-items:center;padding:12rpx 0;">
                 <text>{{ c.name || '未命名' }}</text>
-                <template v-if="env==='WEAPP'">
-                  <button class="nut-button" @tap="() => selectCat(String(c.id))">选择</button>
-                </template>
-                <template v-else>
-                  <nut-button @click="() => selectCat(String(c.id))">选择</nut-button>
-                </template>
+                <nut-button @click="() => selectCat(String(c.id))">选择</nut-button>
               </view>
             </view>
           </view>
           <view class="popup-actions">
-            <template v-if="env==='WEAPP'">
-              <button 
-                class="cancel-btn nut-button"
-                @tap="showCatSelector=false"
-              >取消</button>
-            </template>
-            <template v-else>
-              <nut-button 
-                color="#ccc" 
-                class="cancel-btn"
-                @click="showCatSelector=false"
-              >
-                取消
-              </nut-button>
-            </template>
+            <nut-button 
+              color="#ccc" 
+              class="cancel-btn"
+              @click="showCatSelector=false"
+            >
+              取消
+            </nut-button>
           </view>
         </view>
       </nut-popup>

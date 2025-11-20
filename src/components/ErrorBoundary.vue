@@ -6,7 +6,7 @@
         <text class="error-icon">😅</text>
         <text class="error-title">哎呀，出错了</text>
         <text class="error-message">{{ errorMessage }}</text>
-        <button class="retry-btn" @click="retry">重新加载</button>
+        <nut-button class="retry-btn" @click="retry">重新加载</nut-button>
         <view class="error-details" v-if="showDetails">
           <text class="details-title">详细信息：</text>
           <text class="details-content">{{ errorDetails }}</text>

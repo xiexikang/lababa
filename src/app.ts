@@ -2,8 +2,9 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia';
 // import './app.scss'
 import '@/styles/reset.scss';
-import { Button, Popup, Calendar, CalendarCard } from '@nutui/nutui-taro'
 import './app.scss'
+import '@nutui/nutui-taro/dist/styles/themes/default.scss'
+import { Button, Popup, Input, Switch, Textarea, Radio, RadioGroup, CalendarCard } from '@nutui/nutui-taro'
 
 // 创建Pinia实例
 const pinia = createPinia();
@@ -20,10 +21,7 @@ const App = createApp({
 
 // 安装Pinia
 App.use(pinia);
-App.use(Button)
-App.use(Popup)
-App.use(Calendar)
-App.use(CalendarCard)
+App.use(Button).use(Popup).use(Input).use(Switch).use(Textarea).use(Radio).use(RadioGroup).use(CalendarCard)
 
 
 export default App

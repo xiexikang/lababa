@@ -1,5 +1,5 @@
 import Components from 'unplugin-vue-components/webpack';
-import NutUIResolver from '@nutui/auto-import-resolver';
+import NutUIResolver from '@nutui/nutui-taro/dist/resolver';
 const path = require('path');
 const customWebpackConfig = require('../webpack.config.js');
 const webpack = require('webpack');
@@ -52,6 +52,7 @@ const config = {
   mini: {
     webpackChain(chain) {
       chain.plugin('unplugin-vue-components').use(Components({
+        dts: true,
         resolvers: [
           NutUIResolver({
             importStyle: 'sass',
@@ -59,6 +60,14 @@ const config = {
           })
         ]
       }))
+
+      try {
+        chain.plugin('miniCssExtractPlugin').tap((args: any[]) => {
+          const opts = args?.[0] || {}
+          args[0] = { ...opts, ignoreOrder: true }
+          return args
+        })
+      } catch {}
 
       chain.plugin('vue-feature-flags').use(webpack.DefinePlugin, [
         {
@@ -73,7 +82,7 @@ const config = {
       pxtransform: {
         enable: true,
         config: {
-          // selectorBlackList: ['nut-']
+          selectorBlackList: ['nut-']
         }
       },
       url: {
@@ -97,6 +106,7 @@ const config = {
     },
     webpackChain(chain) {
       chain.plugin('unplugin-vue-components').use(Components({
+        dts: true,
         resolvers: [
           NutUIResolver({
             importStyle: 'sass',
@@ -130,11 +140,21 @@ const config = {
           __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: false
         }
       ])
+      // 关闭性能提示（大文件体积告警）
+      chain.performance.hints(false)
+      // 降低控制台噪音，仅输出错误
+      chain.stats('errors-only')
     },
     publicPath: '/',
     staticDirectory: 'static',
-    esnextModules: ['nutui-taro', 'icons-vue-taro'],
+    esnextModules: ['@nutui/nutui-taro', '@nutui/icons-vue-taro'],
     postcss: {
+      pxtransform: {
+        enable: true,
+        config: {
+          selectorBlackList: ['nut-']
+        }
+      },
       autoprefixer: {
         enable: true,
         config: {

@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/go-sql-driver/mysql"
+    _ "github.com/go-sql-driver/mysql"
 )
 
 type User struct {
@@ -191,9 +191,11 @@ func openMySQL() *sql.DB {
             INDEX idx_records_user_cat_end (userId, catId, endTime)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `)
-	if err != nil {
-		log.Fatal("create tables:", err)
-	}
+    if err != nil {
+        log.Fatal("create tables:", err)
+    }
+
+    ensureRecordsSchema(db)
 
 	// 会话表：保存登录 token 及过期时间
 	_, err = db.Exec(`
@@ -304,7 +306,43 @@ func openMySQL() *sql.DB {
 		log.Fatal("create cat_settings table:", err)
 	}
 
-	return db
+    return db
+}
+
+func ensureRecordsSchema(db *sql.DB) {
+    // detect and add missing columns
+    cols := map[string]bool{}
+    var dbname string
+    _ = db.QueryRow("SELECT DATABASE()").Scan(&dbname)
+    rows, err := db.Query("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=? AND TABLE_NAME='records'", dbname)
+    if err == nil {
+        defer rows.Close()
+        for rows.Next() {
+            var c string
+            _ = rows.Scan(&c)
+            cols[c] = true
+        }
+    }
+    addIfMissing := func(column string, ddl string) {
+        if !cols[column] {
+            _, _ = db.Exec("ALTER TABLE records ADD COLUMN " + ddl)
+        }
+    }
+    addIfMissing("userId", "userId VARCHAR(64)")
+    addIfMissing("catId", "catId VARCHAR(64)")
+    addIfMissing("startTime", "startTime BIGINT")
+    addIfMissing("endTime", "endTime BIGINT")
+    addIfMissing("duration", "duration BIGINT")
+    addIfMissing("color", "color VARCHAR(32)")
+    addIfMissing("status", "status VARCHAR(32)")
+    addIfMissing("shape", "shape VARCHAR(32)")
+    addIfMissing("amount", "amount VARCHAR(32)")
+    addIfMissing("note", "note TEXT")
+    addIfMissing("isCompleted", "isCompleted TINYINT(1)")
+    addIfMissing("createdAt", "createdAt BIGINT")
+    // ensure indexes
+    _, _ = db.Exec("CREATE INDEX IF NOT EXISTS idx_records_user_end ON records(userId, endTime)")
+    _, _ = db.Exec("CREATE INDEX IF NOT EXISTS idx_records_user_cat_end ON records(userId, catId, endTime)")
 }
 
 func migrateFromJSON(db *sql.DB, jsonPath string) {
@@ -346,6 +384,53 @@ func toString(v any, def string) string {
 		return s
 	}
 	return def
+}
+
+func readBody(r *http.Request) map[string]any {
+    var m map[string]any
+    _ = json.NewDecoder(r.Body).Decode(&m)
+    if m == nil {
+        m = map[string]any{}
+    }
+    return m
+}
+
+func getBodyString(b map[string]any, k string, def string) string {
+    v, ok := b[k]
+    if !ok || v == nil {
+        return def
+    }
+    if s, ok := v.(string); ok {
+        return s
+    }
+    return def
+}
+
+func getBodyInt64(b map[string]any, k string, def int64) int64 {
+    v, ok := b[k]
+    if !ok || v == nil {
+        return def
+    }
+    switch t := v.(type) {
+    case float64:
+        return int64(t)
+    case int64:
+        return t
+    case int:
+        return int64(t)
+    case string:
+        i, err := strconv.ParseInt(t, 10, 64)
+        if err != nil {
+            return def
+        }
+        return i
+    default:
+        return def
+    }
+}
+
+func getBodyInt(b map[string]any, k string, def int) int {
+    return int(getBodyInt64(b, k, int64(def)))
 }
 
 func main() {
@@ -473,36 +558,35 @@ func main() {
 			writeErr(w, http.StatusNotFound, 500, "服务异常")
 			return
 		}
-		writeOK(w, map[string]any{"user": u})
+	writeOK(w, map[string]any{"user": u})
 	})
 
-	mux.HandleFunc("/api/users/update/", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/users/update", withAuth(func(w http.ResponseWriter, r *http.Request, userId string) {
 		if r.Method != http.MethodPut {
 			writeErr(w, http.StatusMethodNotAllowed, 500, "服务异常")
 			return
 		}
-		id := strings.TrimPrefix(r.URL.Path, "/api/users/update/")
 		var body struct {
 			NickName  string `json:"nickName"`
 			AvatarUrl string `json:"avatarUrl"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
-		res, _ := db.Exec("UPDATE users SET nickName=IFNULL(NULLIF(?,''),nickName), avatarUrl=IFNULL(NULLIF(?,''),avatarUrl) WHERE id=?", body.NickName, body.AvatarUrl, id)
+		res, _ := db.Exec("UPDATE users SET nickName=IFNULL(NULLIF(?,''),nickName), avatarUrl=IFNULL(NULLIF(?,''),avatarUrl) WHERE id=?", body.NickName, body.AvatarUrl, userId)
 		n, _ := res.RowsAffected()
 		if n == 0 {
 			writeErr(w, http.StatusNotFound, 500, "服务异常")
 			return
 		}
-		row := db.QueryRow("SELECT id,nickName,avatarUrl,openId FROM users WHERE id=?", id)
+		row := db.QueryRow("SELECT id,nickName,avatarUrl,openId FROM users WHERE id= ?", userId)
 		var u User
 		_ = row.Scan(&u.ID, &u.NickName, &u.AvatarUrl, &u.OpenID)
 		writeOK(w, map[string]any{"user": u})
-	})
+	}))
 
-	mux.HandleFunc("/api/records/list", withAuth(func(w http.ResponseWriter, r *http.Request, userId string) {
-		// userId 来自 token
-		start := r.URL.Query().Get("start")
-		end := r.URL.Query().Get("end")
+    mux.HandleFunc("/api/records/list", withAuth(func(w http.ResponseWriter, r *http.Request, userId string) {
+        body := readBody(r)
+        start := getBodyString(body, "start", r.URL.Query().Get("start"))
+        end := getBodyString(body, "end", r.URL.Query().Get("end"))
 		var where []string
 		var args []any
 		if userId != "" {
@@ -510,7 +594,11 @@ func main() {
 			args = append(args, userId)
 		}
 		// 可选猫咪筛选
-		catId := r.URL.Query().Get("catId")
+        catId := getBodyString(body, "catId", r.URL.Query().Get("catId"))
+        if catId == "" { catId = getBodyString(body, "id", r.URL.Query().Get("id")) }
+        if catId == "" {
+            catId = getBodyString(body, "id", r.URL.Query().Get("id"))
+        }
 		if catId != "" {
 			where = append(where, "catId=?")
 			args = append(args, catId)
@@ -530,8 +618,10 @@ func main() {
 		row := db.QueryRow("SELECT COUNT(*) FROM records"+cond, args...)
 		var total int
 		_ = row.Scan(&total)
-		pageNum := int(getQueryInt64(r, "pageNum", int64(getQueryInt64(r, "page", 0))))
-		pageSize := int(getQueryInt64(r, "pageSize", int64(getQueryInt64(r, "limit", 0))))
+        pnAlias := getBodyInt(body, "paNum", -1)
+        pageNum := getBodyInt(body, "pageNum", int(getQueryInt64(r, "pageNum", int64(getQueryInt64(r, "page", 0)))))
+        if pnAlias > 0 { pageNum = pnAlias }
+        pageSize := getBodyInt(body, "pageSize", int(getQueryInt64(r, "pageSize", int64(getQueryInt64(r, "limit", 0)))))
 		var rows *sql.Rows
 		var err error
 		if pageNum > 0 || pageSize > 0 {
@@ -577,47 +667,65 @@ func main() {
 		writeOK(w, data)
 	}))
 
-	mux.HandleFunc("/api/records/create", withAuth(func(w http.ResponseWriter, r *http.Request, userID string) {
-		if r.Method != http.MethodPost {
-			writeErr(w, http.StatusMethodNotAllowed, 500, "服务异常")
-			return
-		}
-		var body map[string]any
-		_ = json.NewDecoder(r.Body).Decode(&body)
-		now := time.Now().UnixMilli()
-		end := now
-		if v, ok := body["endTime"].(float64); ok {
-			end = int64(v)
-		}
-		var dur int64
-		if v, ok := body["duration"].(float64); ok {
-			dur = int64(v)
-		} else {
-			dur = 300
-		}
-		start := end - dur*1000
-		if v, ok := body["startTime"].(float64); ok {
-			start = int64(v)
-		}
-		id := newID()
-		color := toString(body["color"], "brown")
-		status := toString(body["status"], "normal")
-		shape := toString(body["shape"], "banana")
-		amount := toString(body["amount"], "moderate")
-		note := toString(body["note"], "")
-		catId := toString(body["catId"], "")
-		_, _ = db.Exec("INSERT INTO records(id,userId,catId,startTime,endTime,duration,color,status,shape,amount,note,isCompleted,createdAt) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
-			id, userID, catId, start, end, dur, color, status, shape, amount, note, 1, now)
+    mux.HandleFunc("/api/records/create", withAuth(func(w http.ResponseWriter, r *http.Request, userID string) {
+        if r.Method != http.MethodPost {
+            writeErr(w, http.StatusMethodNotAllowed, 500, "服务异常")
+            return
+        }
+        var body map[string]any
+        _ = json.NewDecoder(r.Body).Decode(&body)
+        now := time.Now().UnixMilli()
+        end := now
+        if v, ok := body["endTime"].(float64); ok {
+            end = int64(v)
+        }
+        var dur int64
+        if v, ok := body["duration"].(float64); ok {
+            dur = int64(v)
+        } else {
+            dur = 300
+        }
+        start := end - dur*1000
+        if v, ok := body["startTime"].(float64); ok {
+            start = int64(v)
+        }
+        id := newID()
+        color := toString(body["color"], "brown")
+        status := toString(body["status"], "normal")
+        shape := toString(body["shape"], "banana")
+        amount := toString(body["amount"], "moderate")
+        note := toString(body["note"], "")
+        catId := toString(body["catId"], "")
+        if strings.TrimSpace(catId) == "" {
+            writeErr(w, http.StatusBadRequest, 400, "缺少猫咪ID")
+            return
+        }
+        var owner string
+        _ = db.QueryRow("SELECT userId FROM cats WHERE id=?", catId).Scan(&owner)
+        if owner == "" {
+            writeErr(w, http.StatusNotFound, 404, "猫不存在")
+            return
+        }
+        if owner != userID {
+            writeErr(w, http.StatusForbidden, 403, "猫咪不属于当前用户")
+            return
+        }
+        res, err := db.Exec("INSERT INTO records(id,userId,catId,startTime,endTime,duration,color,status,shape,amount,note,isCompleted,createdAt) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            id, userID, catId, start, end, dur, color, status, shape, amount, note, 1, now)
+        if err != nil {
+            writeErr(w, http.StatusInternalServerError, 500, "服务异常")
+            return
+        }
+        if n, _ := res.RowsAffected(); n == 0 {
+            writeErr(w, http.StatusInternalServerError, 500, "服务异常")
+            return
+        }
 		// 更新排行榜表：当日计数 +1
 		day := time.UnixMilli(end).Format("2006-01-02")
 		var userName string
 		_ = db.QueryRow("SELECT nickName FROM users WHERE id=?", userID).Scan(&userName)
 		_, _ = db.Exec("INSERT INTO leaderboard(id,userId,userName,day,count) VALUES(?,?,?,?,1) ON DUPLICATE KEY UPDATE count=count+1", newID(), userID, userName, day)
-		row := db.QueryRow("SELECT id,userId,catId,startTime,endTime,duration,color,status,shape,amount,note,isCompleted,createdAt FROM records WHERE id=?", id)
-		var rcd Record
-		var ic int
-		_ = row.Scan(&rcd.ID, &rcd.UserID, &rcd.CatID, &rcd.StartTime, &rcd.EndTime, &rcd.Duration, &rcd.Color, &rcd.Status, &rcd.Shape, &rcd.Amount, &rcd.Note, &ic, &rcd.CreatedAt)
-		rcd.IsCompleted = ic != 0
+		rcd := Record{ID: id, UserID: userID, CatID: catId, StartTime: start, EndTime: end, Duration: dur, Color: color, Status: status, Shape: shape, Amount: amount, Note: note, IsCompleted: true, CreatedAt: now}
 		writeOK(w, map[string]any{"record": rcd})
 	}))
 
@@ -723,16 +831,17 @@ func main() {
 		writeOK(w, map[string]any{"record": map[string]string{"id": id}})
 	}))
 
-	mux.HandleFunc("/api/statistics/summary", withAuth(func(w http.ResponseWriter, r *http.Request, userId string) {
-		start := r.URL.Query().Get("start")
-		end := r.URL.Query().Get("end")
+    mux.HandleFunc("/api/statistics/summary", withAuth(func(w http.ResponseWriter, r *http.Request, userId string) {
+        body := readBody(r)
+        start := getBodyString(body, "start", r.URL.Query().Get("start"))
+        end := getBodyString(body, "end", r.URL.Query().Get("end"))
 		var where []string
 		var args []any
 		if userId != "" {
 			where = append(where, "userId=?")
 			args = append(args, userId)
 		}
-		catId := r.URL.Query().Get("catId")
+        catId := getBodyString(body, "catId", r.URL.Query().Get("catId"))
 		if catId != "" {
 			where = append(where, "catId=?")
 			args = append(args, catId)
@@ -760,9 +869,10 @@ func main() {
 	}))
 
 	// 月度按天统计
-	mux.HandleFunc("/api/statistics/month-days", withAuth(func(w http.ResponseWriter, r *http.Request, userId string) {
-		y := int(getQueryInt64(r, "year", int64(time.Now().Year())))
-		m := int(getQueryInt64(r, "month", int64(int(time.Now().Month()))))
+    mux.HandleFunc("/api/statistics/month-days", withAuth(func(w http.ResponseWriter, r *http.Request, userId string) {
+        body := readBody(r)
+        y := getBodyInt(body, "year", int(getQueryInt64(r, "year", int64(time.Now().Year()))))
+        m := getBodyInt(body, "month", int(getQueryInt64(r, "month", int64(int(time.Now().Month())))))
 		if m < 1 {
 			m = 1
 		}
@@ -773,7 +883,8 @@ func main() {
 		end := start.AddDate(0, 1, 0)
 		startTs := start.UnixMilli()
 		endTs := end.UnixMilli()
-		catId := r.URL.Query().Get("catId")
+        catId := getBodyString(body, "catId", r.URL.Query().Get("catId"))
+        if catId == "" { catId = getBodyString(body, "id", r.URL.Query().Get("id")) }
 		var rows *sql.Rows
 		var err error
 		if catId != "" {
@@ -808,13 +919,14 @@ func main() {
 		writeOK(w, map[string]any{"year": y, "month": m, "days": days, "totalDays": len(dayMap), "totalRecords": totalRecords})
 	}))
 
-	mux.HandleFunc("/api/ranking/list", withAuth(func(w http.ResponseWriter, r *http.Request, _ string) {
-		period := r.URL.Query().Get("period")
-		if period == "" {
-			period = "total"
-		}
-		pageNum := int(getQueryInt64(r, "pageNum", int64(getQueryInt64(r, "page", 0))))
-		pageSize := int(getQueryInt64(r, "pageSize", int64(getQueryInt64(r, "limit", 0))))
+    mux.HandleFunc("/api/ranking/list", withAuth(func(w http.ResponseWriter, r *http.Request, _ string) {
+        body := readBody(r)
+        period := getBodyString(body, "period", r.URL.Query().Get("period"))
+        if period == "" {
+            period = "total"
+        }
+        pageNum := getBodyInt(body, "pageNum", int(getQueryInt64(r, "pageNum", int64(getQueryInt64(r, "page", 0)))))
+        pageSize := getBodyInt(body, "pageSize", int(getQueryInt64(r, "pageSize", int64(getQueryInt64(r, "limit", 0)))))
 		if pageNum < 1 {
 			pageNum = 1
 		}
@@ -865,25 +977,42 @@ func main() {
 			return
 		}
 		defer rows.Close()
-		type Item struct {
-			ID         string `json:"id"`
-			TotalCount int64  `json:"totalCount"`
-		}
-		var list []Item
-		for rows.Next() {
-			var id string
-			var name string
-			var c int64
-			_ = rows.Scan(&id, &name, &c)
-			list = append(list, Item{ID: id, TotalCount: c})
-		}
-		writeOK(w, map[string]any{"list": list, "total": total, "pageNum": pageNum, "pageSize": pageSize})
-	}))
+    type Item struct {
+        ID            string `json:"id"`
+        Nickname      string `json:"nickname"`
+        CatName       string `json:"catName"`
+        TotalCount    int64  `json:"totalCount"`
+        TotalDuration int64  `json:"totalDuration"`
+    }
+    var list []Item
+    for rows.Next() {
+        var id string
+        var name string
+        var c int64
+        _ = rows.Scan(&id, &name, &c)
+        var nick string
+        _ = db.QueryRow("SELECT nickName FROM users WHERE id=?", id).Scan(&nick)
+        var catName string
+        if startTs >= 0 && endTs > 0 {
+            var cn sql.NullString
+            _ = db.QueryRow("SELECT c.name FROM records r LEFT JOIN cats c ON c.id=r.catId WHERE r.userId=? AND r.endTime>=? AND r.endTime<? GROUP BY r.catId, c.name ORDER BY COUNT(*) DESC LIMIT 1", id, startTs, endTs).Scan(&cn)
+            if cn.Valid {
+                catName = cn.String
+            }
+        }
+        var sumDur int64
+        _ = db.QueryRow("SELECT IFNULL(SUM(duration),0) FROM records WHERE userId=? AND endTime>=? AND endTime<?", id, startTs, endTs).Scan(&sumDur)
+        list = append(list, Item{ID: id, Nickname: nick, CatName: catName, TotalCount: c, TotalDuration: sumDur})
+    }
+    writeOK(w, map[string]any{"list": list, "total": total, "pageNum": pageNum, "pageSize": pageSize})
+    }))
 
-	mux.HandleFunc("/api/cats/list", withAuth(func(w http.ResponseWriter, r *http.Request, userId string) {
-		q := strings.TrimSpace(r.URL.Query().Get("q"))
-		pageNum := int(getQueryInt64(r, "pageNum", int64(getQueryInt64(r, "page", 0))))
-		pageSize := int(getQueryInt64(r, "pageSize", int64(getQueryInt64(r, "limit", 0))))
+
+    mux.HandleFunc("/api/cats/list", withAuth(func(w http.ResponseWriter, r *http.Request, userId string) {
+        body := readBody(r)
+        q := strings.TrimSpace(getBodyString(body, "q", r.URL.Query().Get("q")))
+        pageNum := getBodyInt(body, "pageNum", int(getQueryInt64(r, "pageNum", int64(getQueryInt64(r, "page", 0)))))
+        pageSize := getBodyInt(body, "pageSize", int(getQueryInt64(r, "pageSize", int64(getQueryInt64(r, "limit", 0)))))
 		cond := " WHERE userId=?"
 		args := []any{userId}
 		if q != "" {
@@ -1006,52 +1135,54 @@ func main() {
 		}})
 	}))
 
-	mux.HandleFunc("/api/cats/update/", withAuth(func(w http.ResponseWriter, r *http.Request, userId string) {
-		if r.Method != http.MethodPut {
+
+
+	mux.HandleFunc("/api/cats/detail/", withAuth(func(w http.ResponseWriter, r *http.Request, userId string) {
+		id := strings.TrimPrefix(r.URL.Path, "/api/cats/detail/")
+		row := db.QueryRow("SELECT id,userId,name,breedId,avatarUrl,gender,birthDate,weightKg,neutered,notes,createdAt FROM cats WHERE id=? AND userId=?", id, userId)
+		var cID, uID, nm, bID, av, gd, nts string
+		var bd, cr int64
+		var wVal sql.NullFloat64
+		var nt int
+		if err := row.Scan(&cID, &uID, &nm, &bID, &av, &gd, &bd, &wVal, &nt, &nts, &cr); err != nil {
+			writeErr(w, http.StatusNotFound, 500, "服务异常")
+			return
+		}
+		writeOK(w, map[string]any{"cat": map[string]any{
+			"id": cID, "userId": uID, "name": nm, "breedId": bID, "avatarUrl": av, "gender": gd, "birthDate": bd, "weightKg": func() float64 {
+				if wVal.Valid { return wVal.Float64 } else { return 0 }
+			}(), "neutered": nt != 0, "notes": nts, "createdAt": cr,
+		}})
+	}))
+
+	mux.HandleFunc("/api/cats/update", withAuth(func(w http.ResponseWriter, r *http.Request, userId string) {
+		if r.Method != http.MethodPost {
 			writeErr(w, http.StatusMethodNotAllowed, 500, "服务异常")
 			return
 		}
-		id := strings.TrimPrefix(r.URL.Path, "/api/cats/update/")
 		var body map[string]any
 		_ = json.NewDecoder(r.Body).Decode(&body)
+		id := toString(body["id"], "")
+		if strings.TrimSpace(id) == "" {
+			writeErr(w, http.StatusBadRequest, 500, "服务异常")
+			return
+		}
+		var owner string
+		_ = db.QueryRow("SELECT userId FROM cats WHERE id=?", id).Scan(&owner)
+		if owner == "" || owner != userId {
+			writeErr(w, http.StatusForbidden, 500, "服务异常")
+			return
+		}
 		var sets []string
 		var args []any
-		if v, ok := body["name"].(string); ok {
-			sets = append(sets, "name=?")
-			args = append(args, v)
-		}
-		if v, ok := body["breedId"].(string); ok {
-			sets = append(sets, "breedId=?")
-			args = append(args, v)
-		}
-		if v, ok := body["avatarUrl"].(string); ok {
-			sets = append(sets, "avatarUrl=?")
-			args = append(args, v)
-		}
-		if v, ok := body["gender"].(string); ok {
-			sets = append(sets, "gender=?")
-			args = append(args, v)
-		}
-		if v, ok := body["birthDate"].(float64); ok {
-			sets = append(sets, "birthDate=?")
-			args = append(args, int64(v))
-		}
-		if v, ok := body["weightKg"].(float64); ok {
-			sets = append(sets, "weightKg=?")
-			args = append(args, v)
-		}
-		if v, ok := body["neutered"].(bool); ok {
-			sets = append(sets, "neutered=?")
-			if v {
-				args = append(args, 1)
-			} else {
-				args = append(args, 0)
-			}
-		}
-		if v, ok := body["notes"].(string); ok {
-			sets = append(sets, "notes=?")
-			args = append(args, v)
-		}
+		if v, ok := body["name"].(string); ok { sets = append(sets, "name=?"); args = append(args, v) }
+		if v, ok := body["breedId"].(string); ok { sets = append(sets, "breedId=?"); args = append(args, v) }
+		if v, ok := body["avatarUrl"].(string); ok { sets = append(sets, "avatarUrl=?"); args = append(args, v) }
+		if v, ok := body["gender"].(string); ok { sets = append(sets, "gender=?"); args = append(args, v) }
+		if v, ok := body["birthDate"].(float64); ok { sets = append(sets, "birthDate=?"); args = append(args, int64(v)) }
+		if v, ok := body["weightKg"].(float64); ok { sets = append(sets, "weightKg=?"); args = append(args, v) }
+		if v, ok := body["neutered"].(bool); ok { sets = append(sets, "neutered=?"); if v { args = append(args, 1) } else { args = append(args, 0) } }
+		if v, ok := body["notes"].(string); ok { sets = append(sets, "notes=?"); args = append(args, v) }
 		if len(sets) == 0 {
 			writeErr(w, http.StatusBadRequest, 500, "服务异常")
 			return
@@ -1071,13 +1202,7 @@ func main() {
 		var nt int
 		_ = row.Scan(&cID, &uID, &nm, &bID, &av, &gd, &bd, &wVal, &nt, &nts, &cr)
 		writeOK(w, map[string]any{"cat": map[string]any{
-			"id": cID, "userId": uID, "name": nm, "breedId": bID, "avatarUrl": av, "gender": gd, "birthDate": bd, "weightKg": func() float64 {
-				if wVal.Valid {
-					return wVal.Float64
-				} else {
-					return 0
-				}
-			}(), "neutered": nt != 0, "notes": nts, "createdAt": cr,
+			"id": cID, "userId": uID, "name": nm, "breedId": bID, "avatarUrl": av, "gender": gd, "birthDate": bd, "weightKg": func() float64 { if wVal.Valid { return wVal.Float64 } else { return 0 } }(), "neutered": nt != 0, "notes": nts, "createdAt": cr,
 		}})
 	}))
 
@@ -1096,17 +1221,17 @@ func main() {
 		writeOK(w, map[string]any{"cat": map[string]string{"id": id}})
 	}))
 
-	mux.HandleFunc("/api/index/list", withAuth(func(w http.ResponseWriter, r *http.Request, userId string) {
-		// userId 来自 token
-		start := r.URL.Query().Get("start")
-		end := r.URL.Query().Get("end")
+    mux.HandleFunc("/api/index/list", withAuth(func(w http.ResponseWriter, r *http.Request, userId string) {
+        body := readBody(r)
+        start := getBodyString(body, "start", r.URL.Query().Get("start"))
+        end := getBodyString(body, "end", r.URL.Query().Get("end"))
 		var where []string
 		var args []any
 		if userId != "" {
 			where = append(where, "userId=?")
 			args = append(args, userId)
 		}
-		catId := r.URL.Query().Get("catId")
+        catId := getBodyString(body, "catId", r.URL.Query().Get("catId"))
 		if catId != "" {
 			where = append(where, "catId=?")
 			args = append(args, catId)
@@ -1130,8 +1255,8 @@ func main() {
 		if cnt > 0 {
 			avg = int64(math.Floor(float64(sum) / float64(cnt)))
 		}
-		pageNum := int(getQueryInt64(r, "pageNum", int64(getQueryInt64(r, "page", 0))))
-		pageSize := int(getQueryInt64(r, "pageSize", int64(getQueryInt64(r, "limit", 0))))
+        pageNum := getBodyInt(body, "pageNum", int(getQueryInt64(r, "pageNum", int64(getQueryInt64(r, "page", 0)))))
+        pageSize := getBodyInt(body, "pageSize", int(getQueryInt64(r, "pageSize", int64(getQueryInt64(r, "limit", 0)))))
 		var rows *sql.Rows
 		var err error
 		if pageNum > 0 || pageSize > 0 {
@@ -1303,8 +1428,14 @@ func main() {
 		})
 	})
 
-	mux.HandleFunc("/api/cats/weights/list", withAuth(func(w http.ResponseWriter, r *http.Request, userId string) {
-		catId := r.URL.Query().Get("catId")
+    mux.HandleFunc("/api/cats/weights/list", withAuth(func(w http.ResponseWriter, r *http.Request, userId string) {
+        body := readBody(r)
+        catId := getBodyString(body, "catId", r.URL.Query().Get("catId"))
+        if catId == "" {
+            catId = getBodyString(body, "id", r.URL.Query().Get("id"))
+        }
+        pageNum := getBodyInt(body, "paNum", getBodyInt(body, "pageNum", 0))
+        pageSize := getBodyInt(body, "pageSize", 20)
 		if catId == "" {
 			writeErr(w, http.StatusBadRequest, 500, "服务异常")
 			return
@@ -1315,7 +1446,16 @@ func main() {
 			writeErr(w, http.StatusForbidden, 500, "服务异常")
 			return
 		}
-		rows, err := db.Query("SELECT id, catId, userId, weightKg, date, note FROM cat_weights WHERE catId=? ORDER BY date DESC", catId)
+        var rows *sql.Rows
+        var err error
+        if pageNum > 0 {
+            if pageNum < 1 { pageNum = 1 }
+            if pageSize <= 0 { pageSize = 20 }
+            offset := (pageNum - 1) * pageSize
+            rows, err = db.Query("SELECT id, catId, userId, weightKg, date, note FROM cat_weights WHERE catId=? ORDER BY date DESC LIMIT ? OFFSET ?", catId, pageSize, offset)
+        } else {
+            rows, err = db.Query("SELECT id, catId, userId, weightKg, date, note FROM cat_weights WHERE catId=? ORDER BY date DESC", catId)
+        }
 		if err != nil {
 			writeOK(w, map[string]any{"items": []any{}})
 			return
@@ -1331,8 +1471,10 @@ func main() {
 			}
 			list = append(list, it)
 		}
-		writeOK(w, map[string]any{"items": list})
-	}))
+        data := map[string]any{"items": list}
+        if pageNum > 0 { data["pageNum"] = pageNum; data["pageSize"] = pageSize }
+        writeOK(w, data)
+    }))
 
 	mux.HandleFunc("/api/cats/weights/create", withAuth(func(w http.ResponseWriter, r *http.Request, userId string) {
 		if r.Method != http.MethodPost {
@@ -1382,8 +1524,10 @@ func main() {
 		}(), "date": outDate, "note": outNote}})
 	}))
 
-	mux.HandleFunc("/api/cats/settings/get", withAuth(func(w http.ResponseWriter, r *http.Request, userId string) {
-		catId := r.URL.Query().Get("catId")
+    mux.HandleFunc("/api/cats/settings/get", withAuth(func(w http.ResponseWriter, r *http.Request, userId string) {
+        body := readBody(r)
+        catId := getBodyString(body, "catId", r.URL.Query().Get("catId"))
+        if catId == "" { catId = getBodyString(body, "id", r.URL.Query().Get("id")) }
 		if catId == "" {
 			writeErr(w, http.StatusBadRequest, 500, "服务异常")
 			return
@@ -1522,6 +1666,54 @@ func main() {
 		}
 		writeOK(w, map[string]any{"templates": list})
 	})
+
+	// 个人中心：统计卡片
+	mux.HandleFunc("/api/profile/stats", withAuth(func(w http.ResponseWriter, r *http.Request, userId string) {
+		var totalCnt int64
+		_ = db.QueryRow("SELECT COUNT(*) FROM records WHERE userId=?", userId).Scan(&totalCnt)
+		var totalDur int64
+		_ = db.QueryRow("SELECT IFNULL(SUM(duration),0) FROM records WHERE userId=?", userId).Scan(&totalDur)
+		var friends int
+		_ = db.QueryRow("SELECT COUNT(*) FROM friend_relations WHERE inviterUserId=? OR inviteeUserId=?", userId, userId).Scan(&friends)
+		writeOK(w, map[string]any{"stats": map[string]any{"totalCount": totalCnt, "totalMinutes": totalDur / 60, "friendsCount": friends}})
+	}))
+
+	// 个人中心：我的成就
+	mux.HandleFunc("/api/profile/achievements", withAuth(func(w http.ResponseWriter, r *http.Request, userId string) {
+		// 连续记录天数（到今天）
+		now := time.Now()
+		start := now.AddDate(0, 0, -60) // 取近 60 天用于连续计算
+		rows, err := db.Query("SELECT DISTINCT DATE(FROM_UNIXTIME(endTime/1000)) AS d FROM records WHERE userId=? AND endTime>=? AND endTime<? ORDER BY d DESC", userId, start.UnixMilli(), now.AddDate(0, 0, 1).UnixMilli())
+		if err != nil {
+			writeOK(w, map[string]any{"list": []any{}})
+			return
+		}
+		defer rows.Close()
+		daySet := make(map[string]struct{})
+		for rows.Next() {
+			var d string
+			_ = rows.Scan(&d)
+			daySet[d] = struct{}{}
+		}
+		streak := 0
+		cur := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+		for {
+			d := cur.Format("2006-01-02")
+			if _, ok := daySet[d]; ok {
+				streak++
+				cur = cur.AddDate(0, 0, -1)
+			} else {
+				break
+			}
+		}
+		var totalCnt int64
+		_ = db.QueryRow("SELECT COUNT(*) FROM records WHERE userId=?", userId).Scan(&totalCnt)
+		list := []map[string]any{
+			{"id": "streak", "title": "坚持记录", "desc": "已连续记录" + strconv.Itoa(streak) + "天", "achieved": streak >= 7, "value": streak},
+			{"id": "milestone_30", "title": "健康达人", "desc": "记录超过30次", "achieved": totalCnt >= 30, "value": totalCnt},
+		}
+		writeOK(w, map[string]any{"list": list})
+	}))
 
 	h := cors(mux)
 	port := os.Getenv("PORT")

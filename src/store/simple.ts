@@ -2,6 +2,7 @@
 import { reactive, computed } from 'vue';
 import { storageManager } from '@/utils/storage';
 import { get, post } from '@/utils/request'
+import Taro from '@tarojs/taro'
 
 // 定义记录类型
 interface PoopRecord {
@@ -73,6 +74,7 @@ export const updateElapsedTime = () => {
 export const saveRecord = async (details: any) => {
   const endTime = Date.now();
   const duration = Math.floor((endTime - globalState.startTime) / 1000);
+  const cid = await ensureValidCatId(details.catId);
   const payload = {
     startTime: globalState.startTime,
     endTime,
@@ -82,7 +84,7 @@ export const saveRecord = async (details: any) => {
     shape: details.shape,
     amount: details.amount,
     note: details.note,
-    catId: details.catId
+    catId: cid
   };
   const res = await post<{ record: PoopRecord }>("/api/records/create", payload);
   const record = res.record as PoopRecord;
@@ -100,7 +102,8 @@ export const addRecordForDate = async (params: any) => {
   const end = new Date(y, (m - 1), d, hh, mm, 0).getTime();
   const durSec = Math.max(1, parseInt(durationMinutes || 5, 10)) * 60;
   const start = end - durSec * 1000;
-  const payload = { startTime: start, endTime: end, duration: durSec, color, status, shape, amount, note };
+  const cid = await ensureValidCatId(params.catId);
+  const payload = { startTime: start, endTime: end, duration: durSec, color, status, shape, amount, note, catId: cid };
   const res = await post<{ record: PoopRecord }>("/api/records/create", payload);
   const record = res.record as PoopRecord;
   globalState.records.unshift(record);
@@ -108,6 +111,29 @@ export const addRecordForDate = async (params: any) => {
   saveToLocalStorage();
   return record;
 };
+
+interface CatItem { id: string; name?: string }
+const fetchCatsList = async (): Promise<CatItem[]> => {
+  try {
+    const res = await get<{ total: number; items: CatItem[] }>("/api/cats/list")
+    return (res?.items || []) as CatItem[]
+  } catch {
+    return []
+  }
+}
+
+const ensureValidCatId = async (catId?: string): Promise<string> => {
+  const cats = await fetchCatsList()
+  if (!cats || cats.length === 0) {
+    try { await Taro.showToast({ title: '请先创建猫咪', icon: 'none' }) } catch {}
+    throw new Error('NO_CAT')
+  }
+  const listIds = new Set(cats.map(c => c.id))
+  if (catId && listIds.has(catId)) return catId
+  const first = cats[0]
+  try { await Taro.showToast({ title: '未选择猫咪，已默认选择', icon: 'none' }) } catch {}
+  return first.id
+}
 
 export const loadRecords = async () => {
   try {

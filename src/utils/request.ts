@@ -131,6 +131,13 @@ export const request = async <T = any>(opts: RequestOptions): Promise<T> => {
 }
 
 export const get = async <T = any>(url: string, params?: Record<string, any>, headers?: Record<string, string>) => {
+  const isList = (() => {
+    const p = url.split('?')[0]
+    return /\/list$/.test(p)
+  })()
+  if (isList) {
+    return request<T>({ url, method: 'POST', data: params, headers })
+  }
   return request<T>({ url, method: 'GET', params, headers })
 }
 
@@ -178,10 +185,9 @@ export const postRaw = async (url: string, data?: any, headers?: Record<string, 
 if (!BASE_URL) {
   let envApi = ''
   try {
-    // 仅在存在 process 时读取环境变量，避免小程序端报错
-    envApi = (typeof process !== 'undefined' && (process as any)?.env?.API_BASE_URL) || ''
+    envApi = process.env.API_BASE_URL as any
   } catch {}
-  setBaseURL(envApi || 'http://localhost:8081')
+  setBaseURL(envApi || 'http://10.30.1.53:8081')
 }
 if (!AUTH_CONFIG.publicPaths || AUTH_CONFIG.publicPaths.length === 0) {
   setAuthConfig({ publicPaths: [/^\/api\/auth\//] })

@@ -1,6 +1,7 @@
 module.exports = {
   env: {
-    NODE_ENV: '"development"'
+    NODE_ENV: '"development"',
+    API_BASE_URL: '"http://10.30.1.53:8081"'
   },
   defineConstants: {
   },

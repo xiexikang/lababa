@@ -110,6 +110,7 @@ import { useSimpleStore } from '@/store/simple';
 const store = useSimpleStore();
 const router = Taro.getCurrentInstance()?.router;
 const dateParam = router?.params?.date || '';
+const catIdParam = router?.params?.id || '';
 const pad2 = (n) => String(n).padStart(2, '0');
 const displayDate = computed(() => {
   if (!dateParam) return '';
@@ -131,7 +132,7 @@ const formatDuration = (sec) => {
 };
 
 const dayRecords = computed(() => {
-  return store.globalState.records.filter(r => toDateStr(r.endTime) === dateParam);
+  return store.globalState.records.filter(r => toDateStr(r.endTime) === dateParam && (!catIdParam || String(r.catId) === String(catIdParam)));
 });
 
 const colorLabels = { 'yellow-brown':'黄褐色','brown':'棕色','black':'黑色','green':'绿色','red':'红色','gray-white':'灰白色' };
@@ -168,7 +169,7 @@ const durChoices = [1,5,10,15,20,30,60];
 const isFillValid = computed(() => !!(fill.value.color && fill.value.status && fill.value.shape && fill.value.amount && fill.value.durationMinutes && fill.value.time));
 const confirmFill = () => {
   if (!isFillValid.value) return;
-  store.addRecordForDate({ date: dateParam, ...fill.value });
+  store.addRecordForDate({ date: dateParam, catId: catIdParam || undefined, ...fill.value });
   showFill.value = false;
   Taro.showToast({ title: '补卡成功', icon: 'success', duration: 1500 });
 };

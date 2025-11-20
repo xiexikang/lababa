@@ -8,8 +8,7 @@
     <view style="margin-top: 16rpx; display:flex; align-items:center; gap:16rpx; justify-content:center;">
       <text>当前猫咪：</text>
       <text v-if="activeCatId && cats.length" style="font-weight:600;">{{ (cats.find(c=>String(c.id)===String(activeCatId))||{}).name || '未命名' }}</text>
-      <button v-if="env==='WEAPP'" class="nut-button" @tap="openCatSelector">切换</button>
-      <nut-button v-else @click="openCatSelector">切换</nut-button>
+      <nut-button @click="openCatSelector">切换</nut-button>
     </view>
   </view>
 
@@ -36,14 +35,8 @@
         <view class="section-header" style="display:flex;justify-content:space-between;align-items:center;">
           <text class="section-title">⚖️ 体重趋势</text>
           <view>
-            <template v-if="env==='WEAPP'">
-              <button class="nut-button" @tap="openAddWeight">新增体重</button>
-              <button class="nut-button" @tap="openReminderSettings">提醒设置</button>
-            </template>
-            <template v-else>
-              <nut-button @click="openAddWeight">新增体重</nut-button>
-              <nut-button @click="openReminderSettings">提醒设置</nut-button>
-            </template>
+            <nut-button @click="openAddWeight">新增体重</nut-button>
+            <nut-button @click="openReminderSettings">提醒设置</nut-button>
           </view>
         </view>
         <view v-if="weightItems.length === 0" style="margin-top:8rpx;">暂无体重记录</view>
@@ -177,22 +170,11 @@
     <view class="record-detail-popup">
       <view class="popup-header"><text>新增体重</text></view>
       <view class="popup-content">
-        <template v-if="env==='WEAPP'">
-          <input class="mp-input" type="digit" :value="addWeightValue" placeholder="kg" @input="e=>addWeightValue=e.detail.value" />
-        </template>
-        <template v-else>
-          <nut-input v-model="addWeightValue" type="number" placeholder="kg" />
-        </template>
+        <nut-input v-model="addWeightValue" type="number" placeholder="kg" />
       </view>
       <view class="popup-actions">
-        <template v-if="env==='WEAPP'">
-          <button class="nut-button" @tap="addWeightVisible=false">取消</button>
-          <button class="nut-button" @tap="submitAddWeight">保存</button>
-        </template>
-        <template v-else>
-          <nut-button @click="addWeightVisible=false">取消</nut-button>
-          <nut-button @click="submitAddWeight">保存</nut-button>
-        </template>
+        <nut-button @click="addWeightVisible=false">取消</nut-button>
+        <nut-button @click="submitAddWeight">保存</nut-button>
       </view>
     </view>
   </nut-popup>
@@ -203,49 +185,23 @@
       <view class="popup-content">
         <view style="display:flex;align-items:center;justify-content:space-between;padding:8rpx 0;">
           <text>总提醒开关</text>
-          <template v-if="env==='WEAPP'">
-            <switch :checked="remindEnabled" @change="e=>remindEnabled=e.detail.value" />
-          </template>
-          <template v-else>
-            <nut-switch v-model="remindEnabled" />
-          </template>
+          <nut-switch v-model="remindEnabled" />
         </view>
         <view style="display:flex;align-items:center;justify-content:space-between;padding:8rpx 0;">
           <text>48小时未记录</text>
-          <template v-if="env==='WEAPP'">
-            <switch :checked="remindNoRecord" @change="e=>remindNoRecord=e.detail.value" />
-          </template>
-          <template v-else>
-            <nut-switch v-model="remindNoRecord" />
-          </template>
+          <nut-switch v-model="remindNoRecord" />
         </view>
         <view style="display:flex;align-items:center;justify-content:space-between;padding:8rpx 0;">
           <text>24小时腹泻≥2次</text>
-          <template v-if="env==='WEAPP'">
-            <switch :checked="remindDiarrhea" @change="e=>remindDiarrhea=e.detail.value" />
-          </template>
-          <template v-else>
-            <nut-switch v-model="remindDiarrhea" />
-          </template>
+          <nut-switch v-model="remindDiarrhea" />
         </view>
         <view style="margin-top:12rpx;display:flex;gap:12rpx;">
-          <template v-if="env==='WEAPP'">
-            <button class="nut-button" @tap="subscribeTemplates">订阅消息</button>
-          </template>
-          <template v-else>
-            <nut-button @click="subscribeTemplates">订阅消息</nut-button>
-          </template>
+          <nut-button @click="subscribeTemplates">订阅消息</nut-button>
         </view>
       </view>
       <view class="popup-actions">
-        <template v-if="env==='WEAPP'">
-          <button class="nut-button" @tap="reminderVisible=false">取消</button>
-          <button class="nut-button" @tap="submitReminderSettings">保存</button>
-        </template>
-        <template v-else>
-          <nut-button @click="reminderVisible=false">取消</nut-button>
-          <nut-button @click="submitReminderSettings">保存</nut-button>
-        </template>
+        <nut-button @click="reminderVisible=false">取消</nut-button>
+        <nut-button @click="submitReminderSettings">保存</nut-button>
       </view>
     </view>
   </nut-popup>
@@ -263,22 +219,12 @@
         <view v-else>
           <view v-for="c in cats" :key="c.id" style="display:flex;justify-content:space-between;align-items:center;padding:12rpx 0;">
             <text>{{ c.name || '未命名' }}</text>
-            <template v-if="env==='WEAPP'">
-              <button class="nut-button" @tap="() => selectCat(String(c.id))">选择</button>
-            </template>
-            <template v-else>
-              <nut-button @click="() => selectCat(String(c.id))">选择</nut-button>
-            </template>
+            <nut-button @click="() => selectCat(String(c.id))">选择</nut-button>
           </view>
         </view>
       </view>
       <view class="popup-actions">
-        <template v-if="env==='WEAPP'">
-          <button class="nut-button" @tap="showCatSelector=false">取消</button>
-        </template>
-        <template v-else>
-          <nut-button @click="showCatSelector=false">取消</nut-button>
-        </template>
+        <nut-button @click="showCatSelector=false">取消</nut-button>
       </view>
     </view>
   </nut-popup>
@@ -290,7 +236,7 @@ import { ref, reactive, computed, onMounted } from 'vue';
 import Taro from '@tarojs/taro';
 import { useSimpleStore } from '@/store/simple';
 import { getRecordDetail } from '@/store/simple'
-import { get, ensureAuth } from '@/utils/request'
+import { get, post, put, ensureAuth } from '@/utils/request'
 
 
 // 使用简单的状态管理
@@ -328,7 +274,8 @@ const loadRecent = async (reset: boolean = false) => {
   }
   const token = Taro.getStorageSync('auth-token') || ''
   if (!token) return
-  const data: any = await get('/api/records/list', { pageNum: pageNum.value, pageSize: pageSize.value, catId: activeCatId.value || undefined })
+  if (!activeCatId.value) return
+  const data: any = await get('/api/records/list', { pageNum: pageNum.value, pageSize: pageSize.value, id: activeCatId.value })
   const items = Array.isArray(data?.items) ? data.items : []
   total.value = Number(data?.total || 0)
   recentRecords.value = recentRecords.value.concat(items)
@@ -338,7 +285,8 @@ const loadSummary = async () => {
   const token = Taro.getStorageSync('auth-token') || ''
   if (!token) return
   try {
-    const data: any = await get('/api/statistics/summary', { catId: activeCatId.value || undefined })
+  if (!activeCatId.value) return
+  const data: any = await get('/api/statistics/summary', { id: activeCatId.value })
     const sum = data?.summary
     if (sum) {
       summary.value = {
@@ -424,7 +372,8 @@ const onDayClick = (day) => {
   const s = `${day.year}-${pad2(day.month)}-${pad2(day.date)}`;
   selectedDate.value = s;
   selectedDateObj.value = new Date(day.year, day.month - 1, day.date);
-  Taro.navigateTo({ url: `/pages/statistics/detail/index?date=${s}` });
+  const idParam = encodeURIComponent(activeCatId.value || '');
+  Taro.navigateTo({ url: `/pages/statistics/detail/index?date=${s}${idParam ? `&id=${idParam}` : ''}` });
 };
 
 // ===== 本周统计 =====
@@ -541,9 +490,10 @@ const loadStatistics = async () => {
   // 初始化与并发拉取
   try {
     store.init();
+    if (!activeCatId.value) return
     await Promise.all([
       (async () => {
-        const resp: any = await get('/api/records/list', { catId: activeCatId.value || undefined })
+        const resp: any = await get('/api/records/list', { id: activeCatId.value || undefined })
         const items: any[] = Array.isArray(resp?.items) ? resp.items : []
         const s = startOfWeek()
         const e = endOfWeek()
@@ -563,9 +513,20 @@ const loadStatistics = async () => {
       (async () => {
         const y = new Date().getFullYear()
         const mth = new Date().getMonth() + 1
-        const m: any = await get('/api/statistics/month-days', { year: y, month: mth, catId: activeCatId.value || undefined })
-        monthDays.value = Array.isArray(m?.days) ? m.days : []
-        monthDayStatusMap.value = m?.dayStatusMap || {}
+        const m: any = await get('/api/statistics/month-days', { year: y, month: mth, id: activeCatId.value })
+        const daysArr = Array.isArray(m?.days) ? m.days : []
+        monthDays.value = daysArr.map((d: any) => d?.date).filter(Boolean)
+        const map: Record<string, { normal: number; diarrhea: number; constipation: number }> = {}
+        daysArr.forEach((d: any) => {
+          const key = String(d?.date || '')
+          if (!key) return
+          map[key] = {
+            normal: Number(d?.normal || 0),
+            diarrhea: Number(d?.diarrhea || 0),
+            constipation: Number(d?.constipation || 0)
+          }
+        })
+        monthDayStatusMap.value = map
       })(),
       loadRecent(true),
       loadSummary()
@@ -575,10 +536,10 @@ const loadStatistics = async () => {
   }
 };
 
-onMounted(() => {
-  loadCats();
-  loadStatistics();
-  loadWeights();
+onMounted(async () => {
+  await loadCats();
+  await loadStatistics();
+  await loadWeights();
 });
 const env = Taro.getEnv()
 const cats = ref<any[]>([])
@@ -587,7 +548,7 @@ const showCatSelector = ref(false)
 const loadCats = async () => {
   const token = Taro.getStorageSync('auth-token') || ''
   if (!token) return
-  const res: any = await get('/api/cats/list')
+  const res: any = await get('/api/cats/list', { id: activeCatId.value })
   cats.value = res?.items || []
   if (!activeCatId.value && cats.value.length > 0) {
     activeCatId.value = String(cats.value[0]?.id || '')
@@ -615,7 +576,8 @@ const loadWeights = async () => {
   const token = Taro.getStorageSync('auth-token') || ''
   if (!token) return
   try {
-    const data: any = await get('/api/weights/list', { catId: activeCatId.value || undefined, pageSize: 20 })
+    if (!activeCatId.value) return
+    const data: any = await get('/api/cats/weights/list', { id: activeCatId.value, pageNum: 1, pageSize: 20 })
     weightItems.value = Array.isArray(data?.items) ? data.items : []
   } catch (_) { }
 }
@@ -632,7 +594,7 @@ const submitAddWeight = async () => {
   const token = Taro.getStorageSync('auth-token') || ''
   if (!token) { ensureAuth(); return }
   try {
-    await get('/api/weights/add', { weightKg: v, date: new Date().toISOString(), catId: activeCatId.value || undefined })
+    await post('/api/cats/weights/create', { weightKg: v, date: Date.now(), catId: activeCatId.value || undefined })
     addWeightVisible.value = false
     await loadWeights()
   } catch (_) {
@@ -644,12 +606,25 @@ const reminderVisible = ref(false)
 const remindEnabled = ref(true)
 const remindNoRecord = ref(false)
 const remindDiarrhea = ref(false)
-const openReminderSettings = () => { reminderVisible.value = true }
+const openReminderSettings = async () => {
+  const token = Taro.getStorageSync('auth-token') || ''
+  if (!token) { ensureAuth(); return }
+  try {
+    const data: any = await get('/api/cats/settings/get', { id: activeCatId.value })
+    const s = data?.settings || {}
+    remindEnabled.value = !!Number(s.remindEnabled ?? 1)
+    remindNoRecord.value = !!Number(s.remindNoRecord ?? 1)
+    remindDiarrhea.value = !!Number(s.remindDiarrhea ?? 1)
+  } catch { /* ignore */ }
+  reminderVisible.value = true
+}
 const submitReminderSettings = async () => {
   const token = Taro.getStorageSync('auth-token') || ''
   if (!token) { ensureAuth(); return }
   try {
-    await get('/api/reminder/save', { enabled: remindEnabled.value, noRecord48h: remindNoRecord.value, diarrhea2x24h: remindDiarrhea.value, catId: activeCatId.value || undefined })
+    if (!activeCatId.value) { Taro.showToast({ title: '请先选择猫咪', icon: 'none' }); return }
+    await put(`/api/cats/settings/update/${encodeURIComponent(activeCatId.value)}`,
+      { remindEnabled: !!remindEnabled.value, remindNoRecord: !!remindNoRecord.value, remindDiarrhea: !!remindDiarrhea.value })
     reminderVisible.value = false
     Taro.showToast({ title: '已保存', icon: 'success' })
   } catch (_) {
@@ -659,8 +634,10 @@ const submitReminderSettings = async () => {
 const subscribeTemplates = async () => {
   if (env === 'WEAPP') {
     try {
+      const tplRes: any = await get('/api/reminders/templates', { id: activeCatId.value })
+      const ids: string[] = Array.isArray(tplRes?.templates) ? tplRes.templates : []
       // @ts-ignore
-      await Taro.requestSubscribeMessage({ tmplIds: [] })
+      await Taro.requestSubscribeMessage({ tmplIds: ids })
       Taro.showToast({ title: '订阅成功', icon: 'success' })
     } catch (_) {
       Taro.showToast({ title: '订阅失败', icon: 'error' })
